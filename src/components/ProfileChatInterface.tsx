@@ -108,6 +108,7 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
         try {
             const result = await processProfileQuery(userMsg.content, {
                 username: profile.login,
+                profile: profile, // Pass full profile object
                 profileReadme,
                 repoReadmes,
             });
@@ -156,7 +157,7 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
                             </a>
                         </div>
                         {profile.bio && (
-                            <p className="text-zinc-400 mb-3">{profile.bio}</p>
+                            <p className="text-zinc-400 mb-3 line-clamp-2">{profile.bio}</p>
                         )}
                         <div className="flex gap-4 text-sm text-zinc-500">
                             <span className="flex items-center gap-1">

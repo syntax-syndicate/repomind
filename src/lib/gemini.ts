@@ -82,7 +82,8 @@ export async function analyzeFileSelection(
 export async function answerWithContext(
     question: string,
     context: string,
-    repoDetails: { owner: string; repo: string }
+    repoDetails: { owner: string; repo: string },
+    profileData?: any // Optional profile data for generating developer cards
 ): Promise<string> {
     const prompt = `
     You are a specialized coding assistant called "RepoMind".
@@ -151,7 +152,7 @@ export async function answerWithContext(
         When the user asks about repositories, projects, or developers, use these special markdown formats:
 
         **REPOSITORY CARDS** - Use when listing projects/repos:
-        Format: :::repo-card followed by fields (owner, name, description, stars, for ks, language), then :::
+        Format: :::repo-card followed by fields (owner, name, description, stars, forks, language), then :::
         
         Example:
         :::repo-card
@@ -166,14 +167,23 @@ export async function answerWithContext(
         **DEVELOPER CARDS** - Use when mentioning repository owners/contributors:
         Format: :::developer-card followed by fields (username, name, avatar, bio, location, blog), then :::
         
-        Example:
+        **CRITICAL**: When generating developer cards, you MUST use the ACTUAL profile data from the context provided.
+        Look for "GITHUB PROFILE METADATA" section in the context and extract:
+        - username: The GitHub username (login)
+        - name: The actual name (NOT a placeholder)
+        - avatar: The actual avatar_url (NOT a placeholder image)
+        - bio: The actual bio (NOT a placeholder description)
+        - location: The actual location (NOT a placeholder)
+        - blog: The actual blog/website URL (NOT example.com or placeholder)
+        
+        Example with ACTUAL data from context:
         :::developer-card
         username: torvalds
         name: Linus Torvalds
         avatar: https://avatars.githubusercontent.com/u/1024025
         bio: Creator of Linux and Git
         location: Portland, OR
-        blog: https://example.com
+        blog: https://kernel.org
         :::
 
         **When to use cards:**
@@ -181,11 +191,13 @@ export async function answerWithContext(
         - User asks "who created this" in repo view → Use developer card
         - User asks "what are their AI projects" → Use repo cards with filtering
         - User asks about contributors → Use developer cards
+        - **IMPORTANT**: When the user is viewing a PROFILE (repo = "profile"), if they ask about projects or repos, DO NOT unnecessarily show a developer card for that same profile unless explicitly asked "who is this person". Just answer the question about their projects.
 
         **DO NOT** use cards for:
         - Quick mentions in paragraphs
         - When specifically asked NOT to
         - Technical code analysis
+        - Showing the same profile the user is already viewing (unless they ask "who is this")
 
     CONTEXT FROM REPOSITORY:
     ${context}

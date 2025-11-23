@@ -82,10 +82,27 @@ export async function processChatQuery(
 
 export async function processProfileQuery(
     query: string,
-    profileContext: { username: string; profileReadme: string | null; repoReadmes: { repo: string; content: string; updated_at: string; description: string | null }[] }
+    profileContext: {
+        username: string;
+        profile: any; // Full GitHub profile object
+        profileReadme: string | null;
+        repoReadmes: { repo: string; content: string; updated_at: string; description: string | null }[]
+    }
 ) {
-    // Build context from profile README and repo READMEs
+    // Build context from profile data, README and repo READMEs
     let context = "";
+
+    // Add profile metadata first
+    context += `\n--- GITHUB PROFILE METADATA ---\n`;
+    context += `Username: ${profileContext.profile.login}\n`;
+    context += `Name: ${profileContext.profile.name || 'N/A'}\n`;
+    context += `Bio: ${profileContext.profile.bio || 'N/A'}\n`;
+    context += `Location: ${profileContext.profile.location || 'N/A'}\n`;
+    context += `Blog/Website: ${profileContext.profile.blog || 'N/A'}\n`;
+    context += `Avatar URL: ${profileContext.profile.avatar_url}\n`;
+    context += `Public Repos: ${profileContext.profile.public_repos}\n`;
+    context += `Followers: ${profileContext.profile.followers}\n`;
+    context += `Following: ${profileContext.profile.following}\n\n`;
 
     if (profileContext.profileReadme) {
         context += `\n--- ${profileContext.username}'S PROFILE README ---\n${profileContext.profileReadme}\n\n`;
@@ -100,19 +117,12 @@ export async function processProfileQuery(
         context = `No profile README or repository READMEs found for ${profileContext.username}.`;
     }
 
-    // Answer using profile context
-    const prompt = `
-    You are analyzing the GitHub profile of: ${profileContext.username}
-    
-    CONTEXT:
-    ${context}
-    
-    USER QUESTION:
-    ${query}
-    
-    Answer the question based on the profile README and repository READMEs provided. Be insightful about their projects, skills, and contributions.
-    `;
-
-    const answer = await answerWithContext(query, context, { owner: profileContext.username, repo: "profile" });
+    // Answer using profile context, passing profile data for developer cards
+    const answer = await answerWithContext(
+        query,
+        context,
+        { owner: profileContext.username, repo: "profile" },
+        profileContext.profile // Pass profile data
+    );
     return { answer };
 }
