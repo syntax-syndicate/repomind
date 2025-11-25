@@ -268,10 +268,47 @@ export async function getRepoDetailsGraphQL(owner: string, repo: string) {
 export async function getFileContent(
   owner: string,
   repo: string,
-  path: string
+  path: string,
+  sha?: string
 ) {
   try {
-    // First, get the file metadata to obtain SHA
+    // If SHA is provided, check cache directly
+    if (sha) {
+      const cached = await getCachedFile(owner, repo, path, sha);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    // If no SHA provided, or not in cache, we need to fetch
+    // If we have SHA, we can try to fetch blob directly if we want, 
+    // but using getContent with path is safer as it handles encoding.
+    // However, getContent with path fetches metadata first.
+    // If we have SHA, we can use git.getBlob which is faster and doesn't need metadata?
+    // Actually, getBlob returns base64. 
+
+    // Let's stick to the existing flow but use SHA to skip metadata fetch if possible.
+    // Wait, if we have SHA, we can't skip metadata fetch if we use `repos.getContent` because that endpoint returns metadata + content.
+    // BUT, `repos.getContent` IS the metadata fetch.
+    // If we have SHA, we can use `git.getBlob`!
+
+    if (sha) {
+      try {
+        const { data } = await octokit.rest.git.getBlob({
+          owner,
+          repo,
+          file_sha: sha,
+        });
+
+        const content = Buffer.from(data.content, "base64").toString("utf-8");
+        await cacheFile(owner, repo, path, sha, content);
+        return content;
+      } catch (e) {
+        console.warn(`Failed to fetch blob for ${path} with SHA ${sha}, falling back to standard fetch`);
+      }
+    }
+
+    // Fallback or original flow: get the file metadata to obtain SHA
     const { data } = await octokit.rest.repos.getContent({
       owner,
       repo,
@@ -279,19 +316,21 @@ export async function getFileContent(
     });
 
     if ("content" in data && !Array.isArray(data)) {
-      const sha = data.sha;
+      const currentSha = data.sha;
 
-      // Check KV cache with SHA
-      const cached = await getCachedFile(owner, repo, path, sha);
-      if (cached) {
-        return cached;
+      // Check KV cache with SHA (if we didn't have it before)
+      if (!sha) {
+        const cached = await getCachedFile(owner, repo, path, currentSha);
+        if (cached) {
+          return cached;
+        }
       }
 
       // Decode content
       const content = Buffer.from(data.content, "base64").toString("utf-8");
 
       // Cache for future requests
-      await cacheFile(owner, repo, path, sha, content);
+      await cacheFile(owner, repo, path, currentSha, content);
 
       return content;
     }
@@ -308,11 +347,11 @@ export async function getFileContent(
 export async function getFileContentBatch(
   owner: string,
   repo: string,
-  paths: string[]
+  files: Array<{ path: string; sha?: string }>
 ): Promise<Array<{ path: string; content: string | null }>> {
-  const promises = paths.map(async (path) => {
+  const promises = files.map(async ({ path, sha }) => {
     try {
-      const content = await getFileContent(owner, repo, path);
+      const content = await getFileContent(owner, repo, path, sha);
       return { path, content };
     } catch (error) {
       console.warn(`Failed to fetch ${path}:`, error);

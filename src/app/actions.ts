@@ -61,40 +61,8 @@ export async function processChatQuery(
     repoContext: { owner: string; repo: string; filePaths: string[] },
     history: { role: "user" | "model"; content: string }[] = []
 ) {
-    // 1. Agentic Selection: Which files do we need?
-    const filePaths = repoContext.filePaths;
-    const relevantFiles = await analyzeFileSelection(query, filePaths);
-
-    // 2. Retrieval: Fetch content of relevant files
-    let context = "";
-    let currentTokenCount = 0;
-    const MAX_CONTEXT_TOKENS = 200000;
-
-    for (const file of relevantFiles) {
-        try {
-            const content = await getFileContent(repoContext.owner, repoContext.repo, file);
-            const fileTokens = countTokens(content);
-
-            if (currentTokenCount + fileTokens > MAX_CONTEXT_TOKENS) {
-                context += `\n--- NOTE: Context truncated due to token limit (${MAX_CONTEXT_TOKENS} tokens) ---\n`;
-                break;
-            }
-
-            context += `\n--- FILE: ${file} ---\n${content}\n`;
-            currentTokenCount += fileTokens;
-        } catch (e) {
-            console.warn(`Failed to fetch ${file}`, e);
-        }
-    }
-
-    // 3. Synthesis: Answer the question
-    if (!context) {
-        // If no files selected, try to answer generally or say we need more info
-        context = "No specific files were selected. Answer based on general knowledge or explain that you need to check specific files.";
-    }
-
-    const answer = await answerWithContext(query, context, { owner: repoContext.owner, repo: repoContext.repo }, undefined, history);
-    return { answer, relevantFiles };
+    // Deprecated: Use analyzeRepoFiles + fetchRepoFiles + generateAnswer instead
+    return { answer: "This function is deprecated. Please refresh the page.", relevantFiles: [] };
 }
 
 /**
@@ -115,9 +83,9 @@ export async function analyzeRepoFiles(
 export async function fetchRepoFiles(
     owner: string,
     repo: string,
-    filePaths: string[]
+    files: Array<{ path: string; sha: string }>
 ): Promise<{ context: string; filesProcessed: number }> {
-    const fileResults = await getFileContentBatch(owner, repo, filePaths);
+    const fileResults = await getFileContentBatch(owner, repo, files);
 
     let context = "";
     let currentTokenCount = 0;
@@ -272,22 +240,22 @@ export async function* processProfileQueryStream(
 export async function scanRepositoryVulnerabilities(
     owner: string,
     repo: string,
-    filePaths: string[]
+    files: Array<{ path: string; sha?: string }>
 ): Promise<{ findings: SecurityFinding[]; summary: ScanSummary; grouped: Record<string, SecurityFinding[]> }> {
     try {
         // Select relevant files for security scanning (focus on code files)
-        const codeFiles = filePaths.filter(path =>
-            /\.(js|jsx|ts|tsx|py|java|php|rb|go|rs)$/i.test(path) || path === 'package.json'
+        const codeFiles = files.filter(f =>
+            /\.(js|jsx|ts|tsx|py|java|php|rb|go|rs)$/i.test(f.path) || f.path === 'package.json'
         ).slice(0, 20); // Limit to 20 files for performance
 
         // Fetch file contents
         const filesWithContent: Array<{ path: string; content: string }> = [];
-        for (const filePath of codeFiles) {
+        for (const file of codeFiles) {
             try {
-                const content = await getFileContent(owner, repo, filePath);
-                filesWithContent.push({ path: filePath, content });
+                const content = await getFileContent(owner, repo, file.path, file.sha);
+                filesWithContent.push({ path: file.path, content });
             } catch (e) {
-                console.warn(`Failed to fetch ${filePath} for security scan`);
+                console.warn(`Failed to fetch ${file.path} for security scan`);
             }
         }
 
@@ -336,22 +304,22 @@ export async function analyzeFileQuality(owner: string, repo: string, path: stri
 export async function searchRepositoryCode(
     owner: string,
     repo: string,
-    filePaths: string[],
+    files: Array<{ path: string; sha?: string }>,
     query: string,
     type: 'text' | 'regex' | 'ast' = 'text'
 ): Promise<SearchResult[]> {
     try {
         // Limit search to 50 files to prevent timeout
-        const searchFilesList = filePaths.slice(0, 50);
+        const searchFilesList = files.slice(0, 50);
         const filesWithContent = [];
 
-        for (const path of searchFilesList) {
+        for (const file of searchFilesList) {
             try {
                 // Skip non-code files for AST search
-                if (type === 'ast' && !/\.(js|jsx|ts|tsx)$/.test(path)) continue;
+                if (type === 'ast' && !/\.(js|jsx|ts|tsx)$/.test(file.path)) continue;
 
-                const content = await getFileContent(owner, repo, path);
-                filesWithContent.push({ path, content });
+                const content = await getFileContent(owner, repo, file.path, file.sha);
+                filesWithContent.push({ path: file.path, content });
             } catch (e) {
                 // Skip failed files
             }

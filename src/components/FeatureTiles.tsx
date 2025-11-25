@@ -5,16 +5,16 @@ import {
     Shield,
     GitBranch,
     MessageSquare,
-    User,
     CheckCircle2,
     Search,
     Sparkles,
     LucideIcon,
     Code2
 } from "lucide-react";
+import { UserIcon } from "@/components/icons/UserIcon";
 
 interface FeatureProps {
-    icon: LucideIcon;
+    icon: any;
     title: string;
     description: string;
     gradient: string;
@@ -88,7 +88,7 @@ export default function FeatureTiles() {
             delay: 0.3,
         },
         {
-            icon: User,
+            icon: UserIcon,
             title: "GitHub Profile Intel",
             description: "Analyze any developer's coding style, expertise, and open-source contributions.",
             gradient: "bg-gradient-to-br from-pink-600 to-purple-600",

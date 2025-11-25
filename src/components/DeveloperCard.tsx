@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { User, ExternalLink, MapPin, Link as LinkIcon, Github } from "lucide-react";
+import { ExternalLink, MapPin, Link as LinkIcon, Github } from "lucide-react";
+import { UserIcon } from "@/components/icons/UserIcon";
 
 interface DeveloperCardProps {
     username: string;
@@ -37,7 +38,7 @@ export function DeveloperCard({ username, name, avatar, bio, location, blog }: D
                         }}
                     />
                     <div className="hidden w-16 h-16 rounded-xl bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center">
-                        <User className="w-8 h-8 text-white" />
+                        <UserIcon className="w-8 h-8 text-white" />
                     </div>
 
                     <div className="flex-1">

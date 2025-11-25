@@ -7,12 +7,15 @@ import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+import { EnhancedMarkdown } from "./EnhancedMarkdown";
+
 interface CodeBlockProps {
     language: string;
     value: string;
+    components?: any;
 }
 
-export function CodeBlock({ language, value }: CodeBlockProps) {
+export function CodeBlock({ language, value, components }: CodeBlockProps) {
     const [copied, setCopied] = useState(false);
     const [isPreview, setIsPreview] = useState(false);
 
@@ -65,9 +68,7 @@ export function CodeBlock({ language, value }: CodeBlockProps) {
             {isPreview ? (
                 <div className="p-4 bg-zinc-900/50 overflow-x-auto w-full min-w-0">
                     <div className="prose prose-invert prose-sm max-w-none">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {value}
-                        </ReactMarkdown>
+                        <EnhancedMarkdown content={value} components={components} />
                     </div>
                 </div>
             ) : (

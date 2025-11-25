@@ -85,7 +85,14 @@ export const Mermaid = ({ chart }: { chart: string }) => {
                 } catch (renderError: any) {
                     console.warn('❌ Layer 1 failed:', renderError.message || 'Render error');
                     if (mounted) {
-                        setError(renderError.message || 'Syntax error in diagram');
+                        // Sanitize error message to remove internal IDs (e.g., #dmermaid-...) and parse errors
+                        const errorMessage = renderError.message || 'Syntax error in diagram';
+                        const isInternalError = errorMessage.includes('dmermaid') ||
+                            errorMessage.includes('#') ||
+                            errorMessage.startsWith('Parse error');
+
+                        const sanitizedError = isInternalError ? 'Syntax error in diagram' : errorMessage;
+                        setError(sanitizedError);
                     }
                 }
             } catch (error: any) {

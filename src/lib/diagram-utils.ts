@@ -195,13 +195,31 @@ export function sanitizeMermaidCode(code: string): string {
             // Pattern: A -- "label" --> B  should become  A -- label --> B
             // Pattern: A -->|"label"| B  should become  A -->|label| B
 
-            // First, handle pipe-style edge labels: -->|"text"| becomes -->|text|
-            trimmed = trimmed.replace(/(\||[=-]+>?\||[.-]+>?\|)\s*"([^"]+)"\s*(\|)/g, '$1$2$3');
+            // Ensure pipe-style edge labels are quoted if they contain special chars or aren't quoted
+            // We capture the arrow/pipe start, the content, and the closing pipe
+            // Regex explanation:
+            // 1. (\||[=-]+>?\||[.-]+>?\|) -> Start of label (e.g., "|", "-->|", "-.->|")
+            // 2. \s* -> Optional whitespace
+            // 3. (?!"|') -> Negative lookahead: ensure it doesn't already start with a quote
+            // 4. (.*?) -> Capture content (non-greedy)
+            // 5. \s* -> Optional whitespace
+            // 6. (\|) -> Closing pipe
+            trimmed = trimmed.replace(/(\||[=-]+>?\||[.-]+>?\|)\s*(?!"|')(.*?)\s*(\|)/g, (match, start, content, end) => {
+                if (!content.trim()) return match; // Empty label
+                const safeContent = sanitizeMermaidText(content);
+                return `${start}"${safeContent}"${end}`;
+            });
 
-            // Then handle space-style edge labels: -- "text" --> becomes -- text -->
-            // But DON'T remove quotes from node shapes like A["text"]
-            // Match: arrow -- "text" arrow but not nodeId["text"]
-            trimmed = trimmed.replace(/(--+|\.\.+|==+)\s*"([^"]+)"\s*(--+>?|\.\.+>?|==+>?)/g, '$1 $2 $3');
+            // Ensure space-style edge labels are quoted
+            // Pattern: -- Label -->
+            trimmed = trimmed.replace(/(--+|\.\.+|==+)\s+(?!"|')(.+?)\s+(--+>?|\.\.+>?|==+>?)/g, (match, start, content, end) => {
+                if (!content.trim()) return match;
+                // Don't touch if it looks like a node definition (e.g. -- Node["Label"])
+                if (content.match(/[\[\(\{]/)) return match;
+
+                const safeContent = sanitizeMermaidText(content);
+                return `${start} "${safeContent}" ${end}`;
+            });
 
             // Handle incomplete node definitions after arrows
             // Pattern: A --> "Label" (no node ID or shape)

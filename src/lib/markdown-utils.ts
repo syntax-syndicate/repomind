@@ -47,6 +47,52 @@ export function repairMarkdown(content: string): string {
                 }
             }
         }
+
+        // 2.5 Handle Unclosed Blocks (Mismatched Fences)
+        // If we have a dangling start fence, look for a subsequent fence that could be a closer.
+        // CRITICAL: Only match fences that are >= the opening fence length (per CommonMark spec)
+        // Shorter fences are content, not closers.
+        if (currentBlockStartFence) {
+            const nextFence = fenceLines.find(f =>
+                f.index > currentBlockStartFence!.index &&
+                f.info === '' &&
+                f.length >= currentBlockStartFence!.length  // Must be equal or longer
+            );
+
+            if (nextFence) {
+                // Found a suitable closer. If it's shorter than opening, extend it to match.
+                if (nextFence.length < currentBlockStartFence.length) {
+                    const newLength = currentBlockStartFence.length;
+                    const newFenceStr = '`'.repeat(newLength);
+
+                    const endLine = lines[nextFence.index];
+                    const endMatch = endLine.match(/^(\s*)(`+)/);
+                    const endIndent = endMatch ? endMatch[1] : '';
+
+                    lines[nextFence.index] = endIndent + newFenceStr;
+                    changesMade = true;
+                    continue;
+                } else {
+                    // Fence is long enough, just register it as a block
+                    blocks.push({
+                        start: currentBlockStartFence.index,
+                        end: nextFence.index,
+                        fenceLength: currentBlockStartFence.length
+                    });
+                    currentBlockStartFence = null;
+                }
+            } else {
+                // No suitable closer found. Add one at the end of the document.
+                const newFenceStr = '`'.repeat(currentBlockStartFence.length);
+                const startLine = lines[currentBlockStartFence.index];
+                const startMatch = startLine.match(/^(\s*)/);
+                const indent = startMatch ? startMatch[1] : '';
+
+                lines.push(indent + newFenceStr);
+                changesMade = true;
+                continue;
+            }
+        }
         // 3. Reactive Repair (Fragmentation)
         // Check for premature closing first!
         for (let i = 0; i < blocks.length; i++) {
@@ -94,15 +140,22 @@ export function repairMarkdown(content: string): string {
         if (changesMade) continue;
 
         // 4. Proactive Repair: Check for nested backticks inside blocks
+        // CRITICAL: Only count fences that could actually CLOSE a block (no info string)
+        // Fences with info strings like ```bash are content, not potential closers
         for (let i = 0; i < blocks.length; i++) {
             const block = blocks[i];
 
             let maxInnerBackticks = 0;
             for (let j = block.start + 1; j < block.end; j++) {
                 const line = lines[j].trim();
-                const match = line.match(/^(`{3,})/);
+                const match = line.match(/^(`{3,})(.*)$/);
                 if (match) {
-                    maxInnerBackticks = Math.max(maxInnerBackticks, match[1].length);
+                    const backtickLength = match[1].length;
+                    const info = match[2].trim();
+                    // Only count this fence if it has no info string (could be a closer)
+                    if (info === '') {
+                        maxInnerBackticks = Math.max(maxInnerBackticks, backtickLength);
+                    }
                 }
             }
 

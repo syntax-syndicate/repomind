@@ -9,7 +9,9 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
 [![Gemini AI](https://img.shields.io/badge/Gemini-2.5_Flash-blue)](https://ai.google.dev/)
 
-**[Live Demo](https://repomind-ai.vercel.app)** | **[Documentation](#features)** | **[GitHub](https://github.com/403errors/repomind)**
+**[Try RepoMind now!](https://repomind-ai.vercel.app)** 
+
+**[Ask RepoMind about RepoMind :3](https://repomind-ai.vercel.app/chat?q=403errors/repomind)**
 
 </div>
 
@@ -21,272 +23,64 @@
 
 ## ✨ Features
 
-### 🤖 Deep Code Analysis
-- **Agentic Context Loading**: Intelligently selects only relevant files based on your query, not the entire repository
-- **Multi-file Understanding**: Analyzes relationships between components, dependencies, and architecture
-- **Smart File Filtering**: Automatically excludes `node_modules`, build artifacts, binaries, and other noise
+### 🧠 Agentic RAG Engine
+- **Smart Context Loading**: Instead of dumping entire files, RepoMind intelligently selects relevant code snippets based on your query.
+- **Noise Filtering**: Automatically ignores `node_modules`, lockfiles, and build artifacts to focus on source code.
+- **Multi-File Understanding**: Traces dependencies and imports to understand how different parts of the codebase interact.
 
-### 🔒 Zero-Cost Security Scanning
-- **Pattern-Based Detection**: Identifies common vulnerabilities (SQL injection, XSS, auth issues)
-- **AI-Powered Analysis**: Gemini AI provides contextual security insights
-- **CWE Mapping**: Links findings to Common Weakness Enumeration standards
-- **Actionable Recommendations**: Get specific fixes for each vulnerability
+### 📊 Visual Architecture Maps
+- **Auto-Generated Diagrams**: Instantly turn complex code logic into clear Mermaid flowcharts and sequence diagrams.
+- **Interactive Zoom/Pan**: Explore large diagrams with intuitive controls.
+- **Export Options**: Save diagrams as images for documentation or presentations.
 
-### 📊 Architecture Visualization
-- **Auto-Generated Flowcharts**: Creates Mermaid diagrams from your codebase
-- **Interactive Diagrams**: Click to view fullscreen, zoom, and explore
-- **Multiple Diagram Types**: Flowcharts, sequence diagrams, class diagrams, and more
+### 👤 Deep Profile Intelligence (USP)
+- **Developer Fingerprinting**: Analyze coding style, commit patterns, and language preferences of any GitHub user.
+- **Cross-Repo Context**: Aggregate knowledge from multiple repositories to understand a developer's full skillset.
+- **Resume Generation**: Create instant technical summaries for any developer profile.
 
-### 💬 Conversational Repository Chat
-- **Context-Aware Responses**: Maintains conversation history for coherent multi-turn dialogues
-- **Code Snippet Highlighting**: Syntax-highlighted code blocks in responses
-- **File Preview Integration**: Click any file mention to see its contents
-- **Markdown + Mermaid Rendering**: Rich formatting with tables, lists, and diagrams
+### 🛡️ Zero-Config Security Audits
+- **Vulnerability Scanning**: Detect SQL injections, XSS, and auth flaws without setting up CI/CD pipelines.
+- **AI-Powered Triage**: Get context-aware explanations of *why* code is vulnerable, not just static alerts.
+- **Fix Recommendations**: Receive copy-pasteable code patches to resolve security issues.
 
-### 👤 GitHub Profile Intelligence
-- **Developer Analysis**: Understand coding style, expertise, and contribution patterns
-- **Project Overview**: Analyze recent repositories, languages used, and commit activity
-- **README Aggregation**: Combines profile + project READMEs for comprehensive context
-- **Visual Developer Cards**: Auto-generated profile cards with avatars and stats
+### 📱 Mobile-First Experience
+- **Code on the Go**: The only advanced code analysis tool optimized for mobile browsers.
+- **Touch-Friendly Interface**: Swipe, tap, and zoom through codebases on your phone or tablet.
+- **Responsive DevTools**: Access full debugging and search capabilities from anywhere.
 
-### ✅ Code Quality Analysis
-- **Cyclomatic Complexity**: Measures code complexity using AST analysis
-- **Maintainability Index**: Calculates maintainability scores (0-100)
-- **AI Code Review**: Gemini AI identifies style issues, potential bugs, and best practices
-- **Actionable Insights**: Get specific recommendations with line numbers and severity levels
+### 🔍 Semantic Code Search
+- **Natural Language Search**: "Find where user authentication happens"
+- **Regex & AST Search**: Power-user tools for precise structural code matching.
+- **Instant Navigation**: Jump directly to relevant lines across thousands of files.
 
-### 🔍 Advanced Search Engine
-- **Text Search**: Fast, case-sensitive/insensitive pattern matching
-- **Regex Search**: Powerful regular expression queries across the entire codebase
-- **AST Search**: Structural code search (find functions, classes, variables, imports by name)
-- **Instant Results**: See matches with file paths, line numbers, and context
+## 🆚 RepoMind vs The Market
 
-### ⚡ DevTools Suite
-- **Documentation Generator**: Auto-generate comprehensive documentation for any file
-- **Test Generator**: Create unit tests based on code structure and logic
-- **Refactoring Suggestions**: Get AI-powered refactoring recommendations
-- **Batch Operations**: Run quality checks and searches across multiple files
+RepoMind is designed for **instant, zero-setup analysis**. While other tools require installation or permissions, RepoMind works immediately in your browser.
 
-### 📱 Mobile-Optimized UI
-- **Responsive Design**: Fully functional on mobile devices, tablets, and desktops
-- **Touch-Friendly**: Optimized tap targets and gestures
-- **Adaptive Layout**: Interface adjusts seamlessly to screen size
-- **Mobile DevTools**: Full DevTools access on mobile browsers
+| Feature | 🧠 RepoMind | 🐙 GitHub Copilot (Web) | 🦎 Greptile | 🚢 Onboard AI |
+| :--- | :---: | :---: | :---: | :---: |
+| **Platform** | **🌐 Web (Any Browser)** | 🌐 Web (GitHub.com) | 🌐 Web Dashboard | 🌐 Web Dashboard |
+| **Access** | **⚡ Instant (Public URL)** | Requires Repo Access | Requires App Install | Requires App Install |
+| **Pricing** | **💸 100% Free** | Enterprise / Paid | Paid (Free Tier) | Paid (Free Tier) |
+| **Visual Maps** | **✅ Auto-Flowcharts** | ❌ No | ❌ No | ❌ No |
+| **Profile Insights** | **✅ Developer Analysis** | ❌ No | ❌ No | ❌ No |
+| **Mobile UX** | **✅ Mobile-First** | ⚠️ Desktop Focused | ❌ Desktop Only | ❌ Desktop Only |
+| **Security Scan** | **✅ Free AI Audit** | ✅ (Advanced Security) | ❌ No | ❌ No |
+| **Tech Stack** | **Agentic RAG** | Indexed Search | Proprietary Index | Vector Search |
 
-### 💾 Smart Caching
-- **Vercel KV Integration**: Session-based caching for instant repeat visits
-- **GitHub API Optimization**: Reduces API calls by caching profile and repo data
-- **Progressive Enhancement**: Fresh data on first visit, instant loads thereafter
+### 🎯 Why RepoMind?
 
-### 🎨 Premium Dark Mode UI
-- **Glassmorphism Effects**: Modern translucent components
-- **Smooth Animations**: Framer Motion-powered transitions
-- **Gradient Accents**: Beautiful purple/blue gradients throughout
-- **Minimalist Design**: Clean, distraction-free interface
+**1. The "Just Works" Factor**
+Competitors like **Greptile** and **Onboard AI** require you to install GitHub Apps, grant permissions, and wait for indexing. **RepoMind** works instantly on any public repository URL. No login or installation required to start.
 
-## 📊 How It Works
+**2. Visuals > Text**
+**GitHub Copilot** and **Onboard AI** give you walls of text. RepoMind generates **interactive flowcharts** and diagrams, helping you visualize the code's architecture instantly.
 
-### Profile View Query Processing
+**3. Mobile Freedom**
+RepoMind is the only tool in this class built with a **mobile-first** philosophy. Debug code, review PRs, or learn a new library from your phone while commuting.
 
-```mermaid
-graph TD
-    A[User enters username] --> B{Check Vercel KV Cache}
-    B -->|Cache Hit| C[Load cached profile]
-    B -->|Cache Miss| D[Fetch GitHub API]
-    
-    D --> E[Get Profile via GraphQL]
-    E --> F[Get Profile README]
-    E --> G[Get Top Repositories]
-    G --> H[Fetch Repo READMEs]
-    
-    F --> I[Cache in Vercel KV]
-    H --> I
-    I --> J[Display Profile Card]
-    C --> J
-    
-    J --> K[User asks question]
-    K --> L[Build context]
-    L --> M[Stream to Gemini AI]
-    M --> N[Render response]
-    
-    style A fill:#a855f7,stroke:#7c3aed,stroke-width:2px,color:#fff
-    style J fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
-    style M fill:#10b981,stroke:#059669,stroke-width:2px,color:#fff
-```
-
-### Repository View Query Processing
-
-```mermaid
-graph TD
-    A[User enters owner/repo] --> B{Check Vercel KV Cache}
-    B -->|Cache Hit| C[Load cached repo data]
-    B -->|Cache Miss| D[Fetch GitHub API]
-    
-    D --> E[Get Repository Details]
-    E --> F[Get File Tree]
-    F --> G[Apply Smart Filters]
-    
-    G --> H[Exclude node_modules]
-    G --> I[Exclude build artifacts]
-    G --> J[Exclude binaries]
-    
-    H --> K[Cache filtered tree]
-    I --> K
-    J --> K
-    K --> L[Display Repo Sidebar]
-    C --> L
-    
-    L --> M[User asks question]
-    M --> N[AI analyzes query]
-    N --> O[Select relevant files]
-    
-    O --> P[Fetch file contents batch]
-    P --> Q[Build context 8K tokens]
-    Q --> R[Send to Gemini AI]
-    R --> S[Stream response chunks]
-    S --> T[Parse markdown + code]
-    T --> U[Render with highlighting]
-    
-    style A fill:#a855f7,stroke:#7c3aed,stroke-width:2px,color:#fff
-    style L fill:#3b82f6,stroke:#2563eb,stroke-width:2px,color:#fff
-    style R fill:#10b981,stroke:#059669,stroke-width:2px,color:#fff
-    style U fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#fff
-```
-
-## 🏗️ Technical Architecture
-
-### Frontend Stack
-- **Framework**: [Next.js 16](https://nextjs.org/) with App Router
-- **UI Library**: [React 19](https://react.dev/)
-- **Styling**: [Tailwind CSS 4](https://tailwindcss.com/)
-- **Animations**: [Framer Motion 12](https://www.framer.com/motion/)
-- **Icons**: [Lucide React](https://lucide.dev/)
-- **Theme**: [next-themes](https://github.com/pacocoursey/next-themes)
-
-### AI & Backend
-- **AI Model**: [Google Gemini 2.5 Flash](https://ai.google.dev/) with streaming responses
-- **AI Features**: Function calling, multi-turn conversations, JSON mode
-- **Caching**: [Vercel KV](https://vercel.com/storage/kv) for session persistence
-- **Backend**: Next.js Server Actions for type-safe API routes
-
-### GitHub Integration
-- **GraphQL API**: [@octokit/graphql](https://github.com/octokit/graphql.js) for efficient queries
-- **REST API**: [Octokit](https://github.com/octokit/octokit.js) for file operations
-- **Authentication**: Personal Access Token (user-provided)
-
-### Code Analysis Tools
-- **AST Parser**: [@babel/parser](https://babeljs.io/docs/babel-parser) for JavaScript/TypeScript analysis
-- **AST Traversal**: [@babel/traverse](https://babeljs.io/docs/babel-traverse)
-- **Pattern Search**: [ast-grep](https://ast-grep.github.io/) for structural code search
-- **Dependency Analysis**: [Madge](https://github.com/pahen/madge) for module graphs
-- **License Check**: [license-checker](https://github.com/davglass/license-checker)
-
-### UI Components
-- **Markdown**: [react-markdown](https://github.com/remarkjs/react-markdown) with [remark-gfm](https://github.com/remarkjs/remark-gfm)
-- **Code Highlighting**: [react-syntax-highlighter](https://github.com/react-syntax-highlighter/react-syntax-highlighter)
-- **Diagrams**: [Mermaid 11](https://mermaid.js.org/) with custom sanitization
-- **Notifications**: [Sonner](https://sonner.emilkowal.ski/)
-- **Canvas**: [html2canvas](https://html2canvas.hertzen.com/) for screenshot/export
-
-### Utilities
-- **Token Counting**: [gpt-tokenizer](https://github.com/niieani/gpt-tokenizer) for context management
-- **Class Merging**: [clsx](https://github.com/lukeed/clsx) + [tailwind-merge](https://github.com/dcastil/tailwind-merge)
-
-## ⚡ Optimizations & Performance
-
-### 🎯 Agentic Context Loading
-Instead of loading entire repositories (which can be gigabytes), RepoMind:
-1. Analyzes your question to understand intent
-2. Selects only the 10-15 most relevant files
-3. Fetches and analyzes just those files
-4. **Result**: 90% faster responses, 95% lower token usage
-
-### 🌊 Progressive Streaming
-- **Real-time Updates**: See AI responses as they're generated, not after completion
-- **Chunk-by-Chunk**: Uses ReadableStream for incremental rendering
-- **User Feedback**: Immediate visual feedback on long queries
-- **Interruption Support**: Can cancel ongoing generations
-
-### 💾 Session Caching (Vercel KV)
-- **Profile Data**: Cached for 1 hour
-- **Repository Tree**: Cached for 30 minutes
-- **README Content**: Cached for 2 hours
-- **Impact**: Instant load on repeat visits, 100x faster than API calls
-
-### 🗂️ Smart File Filtering
-Automatically excludes:
-- `node_modules/`, `vendor/`, `.git/`
-- Build outputs: `dist/`, `build/`, `.next/`, `out/`
-- Lock files: `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`
-- Binary files: images, videos, compiled code
-- **Result**: 80% reduction in file tree size
-
-### 🎫 Token Management
-- **Context Window**: Efficiently packs ~8,000 tokens per request
-- **Prioritization**: Most relevant files first, truncate rest
-- **History Management**: Keeps last 5 conversation turns
-- **Token Counting**: Uses GPT tokenizer for accurate estimates
-
-### 📦 Lazy Loading
-- **File Previews**: Load syntax highlighting only when opened
-- **Images**: Deferred loading for Mermaid diagrams
-- **Code Splitting**: Next.js automatic route-based splitting
-
-## 🆚 RepoMind vs Competitors
-
-| Feature | RepoMind | GitHub Copilot | RepoGPT | CodeRabbit |
-|---------|----------|----------------|----------|------------|
-| **Pricing** | 🎉 **100% Free** | $10-$39/month | Free (limited) | ~$15/month |
-| **Setup** | ✅ Web-based, instant | IDE plugin required | Web-based | GitHub app |
-| **Repository Chat** | ✅ Full context | ❌ Limited | ✅ Yes | ❌ PR-focused only |
-| **Profile Analysis** | ✅ **Unique feature** | ❌ No | ✅ Basic | ❌ No |
-| **Security Scanning** | ✅ Free, AI-powered | ✅ Paid tiers only | ❌ No | ✅ Yes |
-| **No Cloning** | ✅ GitHub API | N/A | ✅ Yes | ✅ Yes |
-| **Architecture Diagrams** | ✅ **Auto-generated** | ❌ No | ❌ No | ❌ No |
-| **Code Quality** | ✅ Complexity + AI | ✅ Limited | ❌ No | ✅ PR reviews |
-| **Advanced Search** | ✅ **AST/Regex/Text** | ❌ No | ❌ No | ❌ No |
-| **Mobile Support** | ✅ Fully optimized | ❌ Desktop only | ❌ Limited | ❌ Desktop |
-| **Self-Hosted** | ✅ Open source | ❌ Closed | ⚠️ Partial | ❌ Closed |
-| **Multi-turn Chat** | ✅ Context aware | ✅ Yes | ✅ Yes | ❌ No |
-| **File Preview** | ✅ In-browser | IDE only | ❌ No | GitHub UI |
-| **DevTools** | ✅ Test/Doc gen | ❌ No | ❌ No | ❌ No |
-
-### 🎯 Key Differentiators
-
-**🎉 Completely Free**
-- No subscriptions, no usage limits, no credit card
-- All features available to everyone
-- Open source under MIT license
-
-**🔓 Open Source & Self-Hostable**
-- Full source code transparency
-- Deploy to your own infrastructure
-- Customize to your needs
-
-**🌐 Zero Setup Required**
-- Just paste a GitHub username or repo URL
-- No IDE plugins, no local installation
-- Works in any modern browser
-
-**🎨 Superior User Experience**
-- Premium dark mode with glassmorphism
-- Smooth animations and transitions
-- Mobile-first responsive design
-
-**🧠 Unique Profile Intelligence**
-- Analyze any developer's coding style
-- Understand expertise and contributions
-- Explore project relationships
-
-**📊 Visual Architecture**
-- Auto-generates flowcharts and diagrams
-- Interactive Mermaid visualizations
-- Export as images
-
-**📱 True Mobile Support**
-- Full feature parity on mobile
-- Optimized touch interactions
-- Responsive DevTools panel
+**4. Profile Intelligence**
+We don't just analyze code; we analyze **coders**. RepoMind is the only platform that aggregates data across a developer's entire portfolio to give you a "resume-style" analysis of their skills and habits.
 
 ## 🚀 Getting Started
 

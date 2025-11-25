@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { User, Loader2, CheckCircle2, FileCode } from "lucide-react";
+import { Loader2, CheckCircle2, FileCode } from "lucide-react";
+import { UserIcon } from "@/components/icons/UserIcon";
 import { ProfileChatInterface } from "./ProfileChatInterface";
 import { fetchProfile, fetchProfileReadme, fetchUserRepos } from "@/app/actions";
 
@@ -80,7 +81,7 @@ export function ProfileLoader({ username }: ProfileLoaderProps) {
     if (error) {
         return (
             <div className="flex flex-col items-center justify-center h-screen bg-black text-white gap-4">
-                <User className="w-16 h-16 text-red-500" />
+                <UserIcon className="w-16 h-16 text-red-500" />
                 <h1 className="text-2xl font-bold">Error Loading Profile</h1>
                 <p className="text-zinc-400">{error}</p>
             </div>
