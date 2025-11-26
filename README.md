@@ -17,7 +17,7 @@
 
 ---
 
-**RepoMind** is a free, open-source AI-powered coding assistant that lets you chat with any public GitHub repository or developer profile. Using an advanced **Context-Aware Engine**, RepoMind performs deep code analysis without requiring you to clone repositories.
+**RepoMind** is a free, AI-powered application using Agentic CAG to chat with any public GitHub repository or developer profile. Using an advanced **Context-Aware Engine**, RepoMind performs deep code analysis without requiring you to clone repositories.
 
 > **Stop reading code. Start talking to it.** 🚀
 
