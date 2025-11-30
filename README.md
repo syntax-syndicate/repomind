@@ -10,12 +10,6 @@
 [![Gemini AI](https://img.shields.io/badge/Gemini-2.5_Flash-blue)](https://ai.google.dev/)
 [![Gemini AI](https://img.shields.io/badge/Gemini-2.5_Flash_Lite-red)](https://ai.google.dev/)
 
-<br/>
-
-[![Total Queries](https://repomind-ai.vercel.app/api/stats/card)](https://repomind-ai.vercel.app/admin/stats)
-
-<br/>
-
 **[Try RepoMind now!](https://repomind-ai.vercel.app)** 
 
 **[Ask RepoMind about RepoMind :3](https://repomind-ai.vercel.app/chat?q=403errors/repomind)**
