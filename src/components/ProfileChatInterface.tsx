@@ -26,7 +26,7 @@ interface Message {
 interface ProfileChatInterfaceProps {
     profile: GitHubProfile;
     profileReadme: string | null;
-    repoReadmes: { repo: string; content: string; updated_at: string; description: string | null }[];
+    repoReadmes: { repo: string; content: string; updated_at: string; description: string | null; stars: number; forks: number }[];
 }
 
 // Initialize mermaid

@@ -166,7 +166,7 @@ export async function processProfileQuery(
         username: string;
         profile: any; // Full GitHub profile object
         profileReadme: string | null;
-        repoReadmes: { repo: string; content: string; updated_at: string; description: string | null }[]
+        repoReadmes: { repo: string; content: string; updated_at: string; description: string | null; stars: number; forks: number }[]
     },
     visitorId?: string,
     history: { role: "user" | "model"; content: string }[] = []
@@ -213,7 +213,7 @@ export async function processProfileQuery(
 
     // Add repo READMEs
     for (const readme of profileContext.repoReadmes) {
-        context += `\n--- REPO: ${readme.repo} ---\nLast Updated: ${readme.updated_at}\nDescription: ${readme.description || 'N/A'}\n\nREADME Content:\n${readme.content}\n\n`;
+        context += `\n--- REPO: ${readme.repo} ---\nLast Updated: ${readme.updated_at}\nDescription: ${readme.description || 'N/A'}\nStars: ${readme.stars}\nForks: ${readme.forks}\n\nREADME Content:\n${readme.content}\n\n`;
     }
 
     if (!context) {
@@ -240,7 +240,7 @@ export async function* processProfileQueryStream(
         username: string;
         profile: any;
         profileReadme: string | null;
-        repoReadmes: { repo: string; content: string; updated_at: string; description: string | null }[]
+        repoReadmes: { repo: string; content: string; updated_at: string; description: string | null; stars: number; forks: number }[]
     }
 ): AsyncGenerator<StreamUpdate> {
     try {
@@ -265,7 +265,7 @@ export async function* processProfileQueryStream(
         yield { type: "status", message: "Analyzing repositories...", progress: 50 };
 
         for (const readme of profileContext.repoReadmes) {
-            context += `\n--- REPO: ${readme.repo} ---\nLast Updated: ${readme.updated_at}\nDescription: ${readme.description || 'N/A'}\n\nREADME Content:\n${readme.content}\n\n`;
+            context += `\n--- REPO: ${readme.repo} ---\nLast Updated: ${readme.updated_at}\nDescription: ${readme.description || 'N/A'}\nStars: ${readme.stars}\nForks: ${readme.forks}\n\nREADME Content:\n${readme.content}\n\n`;
         }
 
         if (!context) {

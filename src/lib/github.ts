@@ -420,6 +420,8 @@ export async function getReposReadmes(username: string) {
           content: Buffer.from(data.content, "base64").toString("utf-8"),
           updated_at: repo.updated_at,
           description: repo.description,
+          stars: repo.stargazers_count,
+          forks: repo.forks_count,
         };
       } catch (e) {
         return null;
@@ -432,6 +434,8 @@ export async function getReposReadmes(username: string) {
       content: string;
       updated_at: string;
       description: string | null;
+      stars: number;
+      forks: number;
     }[];
   } catch (error) {
     console.error("Error fetching repos:", error);
