@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Send, Loader2, Github, MapPin, Link as LinkIcon, Users, BookMarked, ArrowLeft, Sparkles, MessageCircle, Trash2 } from "lucide-react";
+import { Send, Loader2, Github, MapPin, Link as LinkIcon, Users, BookMarked, ArrowLeft, Sparkles, MessageCircle, Trash2, Download } from "lucide-react";
 import { BotIcon } from "@/components/icons/BotIcon";
 import { UserIcon } from "@/components/icons/UserIcon";
 import { motion, AnimatePresence } from "framer-motion";
@@ -11,6 +11,7 @@ import { EnhancedMarkdown } from "./EnhancedMarkdown";
 import { countMessageTokens, formatTokenCount, getTokenWarningLevel, isRateLimitError, getRateLimitErrorMessage, MAX_TOKENS } from "@/lib/tokens";
 import { validateMermaidSyntax, sanitizeMermaidCode, getFallbackTemplate, generateMermaidFromJSON } from "@/lib/diagram-utils";
 import { saveProfileConversation, loadProfileConversation, clearProfileConversation } from "@/lib/storage";
+import { exportChatToMarkdownFile } from "@/lib/chat-export";
 import { ConfirmDialog } from "./ConfirmDialog";
 import Link from "next/link";
 import mermaid from "mermaid";
@@ -299,6 +300,24 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
         toast.success("Chat history cleared");
     };
 
+    const handleExportChat = async () => {
+        const contextLabel = profile.login;
+        await exportChatToMarkdownFile({
+            title: `${contextLabel} Chat Export`,
+            contextLabel,
+            messages,
+            renderMermaid: (code, id) => mermaid.render(id, code).then((out) => out.svg),
+            convertMermaidJson: (json) => {
+                try {
+                    return generateMermaidFromJSON(JSON.parse(json));
+                } catch {
+                    return null;
+                }
+            },
+        });
+        toast.success("Chat exported");
+    };
+
     return (
         <div className="flex flex-col h-[100dvh] bg-black text-white">
             {/* Profile Header */}
@@ -338,6 +357,14 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
                                 <MessageCircle className="w-3.5 h-3.5" />
                                 <span>{formatTokenCount(totalTokens)} / {formatTokenCount(MAX_TOKENS)} tokens</span>
                             </div>
+
+                            <button
+                                onClick={handleExportChat}
+                                className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                                title="Export Chat"
+                            >
+                                <Download className="w-5 h-5" />
+                            </button>
 
                             <button
                                 onClick={() => setShowClearConfirm(true)}

@@ -12,6 +12,7 @@ import { EnhancedMarkdown } from "./EnhancedMarkdown";
 import { countMessageTokens, formatTokenCount, getTokenWarningLevel, isRateLimitError, getRateLimitErrorMessage, MAX_TOKENS } from "@/lib/tokens";
 import { validateMermaidSyntax, sanitizeMermaidCode, getFallbackTemplate, generateMermaidFromJSON } from "@/lib/diagram-utils";
 import { saveConversation, loadConversation, clearConversation } from "@/lib/storage";
+import { exportChatToMarkdownFile } from "@/lib/chat-export";
 import { DevTools } from "./DevTools";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { CodeBlock } from "./CodeBlock";
@@ -458,6 +459,24 @@ export function ChatInterface({ repoContext, onToggleSidebar }: ChatInterfacePro
         toast.success("Chat history cleared");
     };
 
+    const handleExportChat = async () => {
+        const contextLabel = `${repoContext.owner}/${repoContext.repo}`;
+        await exportChatToMarkdownFile({
+            title: `${contextLabel} Chat Export`,
+            contextLabel,
+            messages,
+            renderMermaid: (code, id) => mermaid.render(id, code).then((out) => out.svg),
+            convertMermaidJson: (json) => {
+                try {
+                    return generateMermaidFromJSON(JSON.parse(json));
+                } catch {
+                    return null;
+                }
+            },
+        });
+        toast.success("Chat exported");
+    };
+
     return (
         <div className="flex flex-col h-full bg-black text-white">
             {/* Repo Header */}
@@ -505,6 +524,14 @@ export function ChatInterface({ repoContext, onToggleSidebar }: ChatInterfacePro
                             }}
                         />
                     </div>
+
+                    <button
+                        onClick={handleExportChat}
+                        className="p-2 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded-lg transition-colors"
+                        title="Export Chat"
+                    >
+                        <Download className="w-5 h-5" />
+                    </button>
 
                     <button
                         onClick={() => setShowClearConfirm(true)}
