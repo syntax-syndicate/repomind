@@ -2,18 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
-## [v1.3.3] - 2026-01-25
+## [v1.3.4] - 2026-01-25
 ### Added
 - **Chat Export**: Export chats to Markdown with Mermaid rendering.
 - **Copy Response**: One-click copy for AI responses with enhanced clipboard support and icon updates.
 - **Chat UX**: Reference text handling, selection support, and refined chat input/profile chat interfaces.
 - **File Preview**: Refactored base64 decoding logic for readability.
 
+## [v1.3.3] - 2025-12-8
+### Added
+ - **Markdown Support**: User input contained between three backticks is now treated as markdown.
+ - **PWA Support**: Full Progressive Web App support is now available.
+ - **GitHub Link**: GitHub repository link is now implemented on the webpage.
+
 ## [v1.3.2] - 2025-11-30
 ### Added
-- **⚡ Blazing Fast Optimization**: Instant profile loads & faster file selection with Flash-Lite.
-- **🌐 Native Web Search**: Real-time answers for competitors, news, and jobs using Gemini's `googleSearch`.
-- **🔗 Smart URL Handling**: Intelligent LinkedIn summarization & identity verification.
+- **Blazing Fast Optimization**: Instant profile loads & faster file selection with Flash-Lite.
+- **Native Web Search**: Real-time answers for competitors, news, and jobs using Gemini's `googleSearch`.
+- **Smart URL Handling**: Intelligent LinkedIn summarization & identity verification.
 
 ## [v1.3.1]
 ### Improved
