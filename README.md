@@ -7,7 +7,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/403errors/repomind?style=social)](https://github.com/403errors/repomind)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
-[![Gemini AI](https://img.shields.io/badge/Gemini-2.5_Flash-blue)](https://ai.google.dev/)
+[![Gemini AI](https://img.shields.io/badge/Gemini-3_Flash_Preview-blue)](https://ai.google.dev/)
 [![Gemini AI](https://img.shields.io/badge/Gemini-2.5_Flash_Lite-red)](https://ai.google.dev/)
 
 **[Try RepoMind now!](https://repomind-ai.vercel.app)** 
@@ -38,6 +38,32 @@ RepoMind uses **Context Augmented Generation (CAG)**, not traditional RAG. We do
 | **Retrieval** | Similarity Search (Vector DB) | **AI Agent Selection** + **Smart Caching** |
 | **Context** | Fragmented | **Coherent & Complete** |
 | **Memory** | None (Stateless) | **KV Cache** (Remembers relevant files) |
+
+### ⚡ Caching Optimization Strategy
+
+To ensure lightning-fast responses while staying within infrastructure limits, RepoMind employs a smart caching strategy:
+
+```mermaid
+graph TD
+    req[Request File/Data] --> kv{Check KV Cache}
+    
+    kv -->|Hit| checkComp{Compressed?}
+    checkComp -->|Yes| decomp[Decompress with Gunzip]
+    checkComp -->|No| ret1[Return Data]
+    decomp --> ret1
+    
+    kv -->|Miss| gh[Fetch from GitHub API]
+    gh --> checkSize{Size > 2MB?}
+    
+    checkSize -->|Yes| skip[Skip Caching]
+    checkSize -->|No| comp[Compress with Gzip]
+    
+    comp --> store[Store in KV with gz: prefix]
+    store --> ret2[Return Data]
+    skip --> ret2
+    
+    ret2 --> req
+```
 
 ### 🔄 Workflow Architecture
 
@@ -78,6 +104,32 @@ We are constantly improving RepoMind. Check out our **[CHANGELOG.md](CHANGELOG.m
 - **Vulnerability Scanning**: Detect SQL injections, XSS, and auth flaws without setting up CI/CD pipelines.
 - **AI-Powered Triage**: Get context-aware explanations of *why* code is vulnerable, not just static alerts.
 - **Fix Recommendations**: Receive copy-pasteable code patches to resolve security issues.
+
+#### Vulnerability Scanning Workflow
+
+```mermaid
+graph TD
+    Start[User Requests Scan] --> Select[Select Code Files]
+    Select --> Fetch[Fetch Content]
+    
+    subgraph "Pattern Engine (Fast)"
+        Fetch --> Secrets[Detect Secrets]
+        Fetch --> Patterns[Code Patterns]
+        Fetch --> Deps[Check Dependencies]
+    end
+    
+    subgraph "AI Engine (Deep)"
+        Fetch -->|High Risk Files| AI[Gemini 3 Analysis]
+        AI -->|Context Aware| AIFindings[AI Findings]
+    end
+    
+    Secrets --> Dedup[Deduplicate & Aggregate]
+    Patterns --> Dedup
+    Deps --> Dedup
+    AIFindings --> Dedup
+    
+    Dedup --> Report[Generate Security Report]
+```
 
 ### 📱 Mobile-First Experience
 - **Analyze on the Go**: The only advanced code analysis tool optimized for mobile browsers.
