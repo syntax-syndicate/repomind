@@ -1,7 +1,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 // Helper to get a fresh model instance
-function getModel(modelName: string = "gemini-2.5-flash") {
+function getModel(modelName: string = "gemini-3-flash-preview") {
   const apiKey = process.env.GEMINI_API_KEY || "";
   if (!apiKey) {
     throw new Error("GEMINI_API_KEY environment variable is not set");

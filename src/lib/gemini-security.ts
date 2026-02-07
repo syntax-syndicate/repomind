@@ -94,7 +94,7 @@ export async function analyzeCodeWithGemini(
 ): Promise<SecurityFinding[]> {
     try {
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash',
+            model: 'gemini-3-flash-preview',
             tools: [{ functionDeclarations: securityAnalysisFunctions as any }]
         });
 
@@ -214,7 +214,7 @@ export async function generateSecurityPatch(params: {
 }): Promise<{ patch: string; explanation: string }> {
     try {
         const model = genAI.getGenerativeModel({
-            model: 'gemini-2.5-flash'
+            model: 'gemini-3-flash-preview'
         });
 
         const contextSnippet = params.snippet || '';

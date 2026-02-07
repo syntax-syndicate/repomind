@@ -10,7 +10,7 @@ export async function generateDocumentation(
     type: 'jsdoc' | 'readme' | 'comments' = 'jsdoc'
 ): Promise<string> {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
         const prompt = `
       Generate ${type.toUpperCase()} documentation for the following code.
@@ -36,7 +36,7 @@ export async function generateTests(
     framework: 'jest' | 'vitest' = 'jest'
 ): Promise<string> {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
         const prompt = `
       Generate ${framework} unit tests for the following code.
@@ -60,7 +60,7 @@ export async function generateTests(
  */
 export async function suggestRefactoring(code: string): Promise<string> {
     try {
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
         const prompt = `
       Suggest a refactoring for this code to improve readability and performance.
