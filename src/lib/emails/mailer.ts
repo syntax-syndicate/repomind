@@ -16,7 +16,7 @@ export async function sendWelcomeEmail(to: string, username: string) {
 
     try {
         const { data, error } = await resend.emails.send({
-            from: 'RepoMind <onboarding@resend.dev>', // Change to your verified domain in production E.g 'onboarding@repomind.co'
+            from: 'RepoMind <repoming.agent@gmail.com>', // Change to your verified domain in production E.g 'onboarding@repomind.co'
             to: [to],
             subject: 'Welcome to RepoMind!',
             react: WelcomeEmail({ username }),
