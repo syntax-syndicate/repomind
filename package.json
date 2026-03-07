@@ -63,6 +63,7 @@
     "eslint": "^9.39.1",
     "eslint-config-next": "^16.0.7",
     "eslint-plugin-security": "^3.0.1",
+    "lightningcss": "^1.31.1",
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite-tsconfig-paths": "^6.1.1",
