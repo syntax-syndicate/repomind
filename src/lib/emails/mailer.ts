@@ -2,12 +2,16 @@ import { Resend } from 'resend';
 import WelcomeEmail from './welcome';
 
 // Make sure to add RESEND_API_KEY to .env.local
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resend: Resend | null = null;
 
 export async function sendWelcomeEmail(to: string, username: string) {
     if (!process.env.RESEND_API_KEY) {
         console.warn('RESEND_API_KEY is not set. Skipping welcome email.');
         return;
+    }
+
+    if (!resend) {
+        resend = new Resend(process.env.RESEND_API_KEY);
     }
 
     try {
