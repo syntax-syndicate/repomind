@@ -73,8 +73,8 @@ import { mapProfileStreamChunk } from "@/lib/profile-stream";
  * Reads headers at this function's top level (required by Next.js 15).
  */
 async function trackQueryEvent(visitorId: string | undefined): Promise<void> {
-    if (process.env.NODE_ENV === "development") {
-        console.log("[Analytics] Skipped (dev)");
+    if (process.env.NODE_ENV === "development" && process.env.TRACK_ANALYTICS_IN_DEV !== "true") {
+        console.log("[Analytics] Skipped (dev). Set TRACK_ANALYTICS_IN_DEV=true to enable.");
         return;
     }
     if (!visitorId) return;

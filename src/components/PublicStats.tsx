@@ -15,7 +15,7 @@ export default function PublicStats() {
         return () => { mounted = false; };
     }, []);
 
-    if (!stats || (stats.totalVisitors === 0 && stats.totalQueries === 0)) {
+    if (!stats) {
         return (
             <div className="flex flex-wrap justify-center gap-4 mt-8 md:mt-12 text-sm text-zinc-400">
                 <div className="flex items-center gap-2 bg-zinc-900/50 border border-white/10 px-4 py-2 rounded-full backdrop-blur-sm shadow-xl animate-pulse">
