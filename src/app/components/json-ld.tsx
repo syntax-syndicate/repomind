@@ -7,7 +7,7 @@ export default function JsonLd() {
                     "@context": "https://schema.org",
                     "@type": "WebSite",
                     name: "RepoMind",
-                    url: "https://repomind-ai.vercel.app",
+                    url: process.env.NEXT_PUBLIC_APP_URL || "https://repomind.in",
                 }),
             }}
         />

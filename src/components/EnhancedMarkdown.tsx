@@ -56,9 +56,11 @@ export function parseCardContent(text: string): ParsedContent[] {
 interface EnhancedMarkdownProps {
     content: string;
     components?: any;
+    currentOwner?: string;
+    currentRepo?: string;
 }
 
-export function EnhancedMarkdown({ content, components }: EnhancedMarkdownProps) {
+export function EnhancedMarkdown({ content, components, currentOwner, currentRepo }: EnhancedMarkdownProps) {
     const parts = parseCardContent(content);
     return (
         <>
@@ -68,7 +70,13 @@ export function EnhancedMarkdown({ content, components }: EnhancedMarkdownProps)
                         <ReactMarkdown
                             key={index}
                             components={{
-                                a: SmartLink,
+                                a: (props: any) => (
+                                    <SmartLink
+                                        {...props}
+                                        currentOwner={currentOwner}
+                                        currentRepo={currentRepo}
+                                    />
+                                ),
                                 ...components
                             }}
                             remarkPlugins={[remarkGfm]}
@@ -80,6 +88,12 @@ export function EnhancedMarkdown({ content, components }: EnhancedMarkdownProps)
                 }
                 if (part.type === "repo-card") {
                     const data = part.content as Record<string, string>;
+
+                    // Filter out current repo card
+                    const isSameUser = currentOwner?.toLowerCase() === data.owner?.toLowerCase();
+                    const isSameRepo = isSameUser && currentRepo?.toLowerCase() === data.name?.toLowerCase();
+                    if (isSameRepo) return null;
+
                     return (
                         <RepoCard
                             key={index}
@@ -94,6 +108,11 @@ export function EnhancedMarkdown({ content, components }: EnhancedMarkdownProps)
                 }
                 if (part.type === "developer-card") {
                     const data = part.content as Record<string, string>;
+
+                    // Filter out current developer card
+                    const isSameUser = currentOwner?.toLowerCase() === data.username?.toLowerCase();
+                    if (isSameUser && !currentRepo) return null;
+
                     return (
                         <DeveloperCard
                             key={index}

@@ -5,7 +5,7 @@ import path from "path";
 export const dynamic = 'force-static';
 
 export default function sitemap(): MetadataRoute.Sitemap {
-    const baseUrl = "https://repomind-ai.vercel.app";
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://repomind.in";
 
     const defaultRoutes: MetadataRoute.Sitemap = [
         {

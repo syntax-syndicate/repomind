@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
-import { fetchGitHubData } from "./actions";
+import { fetchGitHubData, getRecentSearches } from "./actions";
 import TrustedByMarquee from "@/components/TrustedByMarquee";
 import InteractiveDemo from "@/components/InteractiveDemo";
 import BentoFeatures from "@/components/BentoFeatures";
 import SecurityBanner from "@/components/SecurityBanner";
 import WallOfLove from "@/components/WallOfLove";
-import { WhatsNewBadge } from "@/components/WhatsNewBadge";
 import { GitHubBadge } from "@/components/GitHubBadge";
 import { CAGBadge } from "@/components/CAGBadge";
 import CAGComparison from "@/components/CAGComparison";
@@ -18,12 +18,22 @@ import Footer from "@/components/Footer";
 import Image from "next/image";
 import { InstallPWA } from "@/components/InstallPWA";
 import PublicStats from "@/components/PublicStats";
+import AuthButton from "@/components/AuthButton";
+import type { SearchHistoryItem } from "@/lib/services/history-service";
 
 export default function HomeClient() {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const router = useRouter();
+    const { data: session } = useSession();
+    const [recentSearches, setRecentSearches] = useState<SearchHistoryItem[]>([]);
+
+    useEffect(() => {
+        if (session) {
+            getRecentSearches().then(setRecentSearches);
+        }
+    }, [session]);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -54,9 +64,15 @@ export default function HomeClient() {
                 <div className="absolute bottom-[-20%] right-[-10%] w-[80vw] max-w-[500px] h-[80vw] max-h-[500px] bg-blue-600/30 rounded-full blur-[80px] md:blur-[128px]" />
             </div>
 
-            <section className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden z-10">
-                <WhatsNewBadge />
+            <div className="fixed top-4 left-4 md:top-6 md:left-6 z-[100]">
                 <GitHubBadge />
+            </div>
+
+            <div className="fixed top-4 right-4 md:top-6 md:right-6 z-[100]">
+                <AuthButton />
+            </div>
+
+            <section className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden z-10">
 
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -115,12 +131,31 @@ export default function HomeClient() {
                     )}
 
                     <div className="mt-8 md:mt-10 flex flex-wrap justify-center gap-3 md:gap-4 text-xs md:text-sm text-zinc-500">
-                        <span>Try:</span>
-                        <button onClick={() => setInput("torvalds")} className="hover:text-white transition-colors">torvalds</button>
-                        <span className="hidden sm:inline">•</span>
-                        <button onClick={() => setInput("facebook/react")} className="hover:text-white transition-colors">facebook/react</button>
-                        <span className="hidden sm:inline">•</span>
-                        <button onClick={() => setInput("vercel/next.js")} className="hover:text-white transition-colors">vercel/next.js</button>
+                        {session && recentSearches.length > 0 ? (
+                            <>
+                                <span>Recent:</span>
+                                {recentSearches.map((search, i) => (
+                                    <span key={search.query} className="flex items-center gap-3 md:gap-4">
+                                        <button
+                                            onClick={() => setInput(search.query)}
+                                            className="hover:text-white transition-colors"
+                                        >
+                                            {search.query}
+                                        </button>
+                                        {i < recentSearches.length - 1 && <span className="hidden sm:inline">•</span>}
+                                    </span>
+                                ))}
+                            </>
+                        ) : (
+                            <>
+                                <span>Try:</span>
+                                <button onClick={() => setInput("torvalds")} className="hover:text-white transition-colors">torvalds</button>
+                                <span className="hidden sm:inline">•</span>
+                                <button onClick={() => setInput("facebook/react")} className="hover:text-white transition-colors">facebook/react</button>
+                                <span className="hidden sm:inline">•</span>
+                                <button onClick={() => setInput("vercel/next.js")} className="hover:text-white transition-colors">vercel/next.js</button>
+                            </>
+                        )}
                     </div>
 
                     <PublicStats />

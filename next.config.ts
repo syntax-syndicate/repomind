@@ -8,6 +8,18 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '5mb',
     },
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'avatars.githubusercontent.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'github.com',
+      },
+    ],
+  },
 };
 
 export default withPWA({

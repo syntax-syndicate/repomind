@@ -37,17 +37,18 @@ export interface SecurityScanDeps {
         sha?: string
     ) => Promise<string>;
     runAiAnalysis?: (
-        files: Array<{ path: string; content: string }>
+        files: Array<{ path: string; content: string }>,
+        repoAllPaths: string[]
     ) => Promise<SecurityFinding[]>;
 }
 
 // ─── Pure Helpers ──────────────────────────────────────────────────────────────
 
-function normalizePatterns(patterns?: string[]): string[] {
+export function normalizePatterns(patterns?: string[]): string[] {
     return (patterns ?? []).map((p) => p.trim()).filter(Boolean);
 }
 
-function buildMatchers(patterns: string[]): RegExp[] {
+export function buildMatchers(patterns: string[]): RegExp[] {
     return patterns.map((pattern) => {
         const escaped = pattern
             .replace(/[.+^${}()|[\]\\]/g, "\\$&")
@@ -56,7 +57,7 @@ function buildMatchers(patterns: string[]): RegExp[] {
     });
 }
 
-function matchesAny(path: string, matchers: RegExp[]): boolean {
+export function matchesAny(path: string, matchers: RegExp[]): boolean {
     return matchers.some((m) => m.test(path));
 }
 
@@ -65,7 +66,8 @@ export function scorePathRisk(path: string): number {
     const RISK_KEYWORDS = [
         "auth", "login", "oauth", "jwt", "token", "session", "admin",
         "middleware", "api", "route", "controller", "db", "sql",
-        "payment", "billing", "webhook", "crypto", "secret",
+        "payment", "billing", "webhook", "crypto", "secret", "password",
+        "user", "account", "permission", "role", "acl", "gate",
     ];
     const lower = path.toLowerCase();
     return RISK_KEYWORDS.reduce((n, kw) => (lower.includes(kw) ? n + 1 : n), 0);
@@ -120,16 +122,18 @@ export function buildScanConfig(options: {
     const depth = options.depth ?? "quick";
     return {
         depth,
-        maxFiles: options.maxFiles ?? (depth === "deep" ? 60 : 20),
+        // Quick: top 10 files, Deep: top 50 files
+        maxFiles: options.maxFiles ?? (depth === "deep" ? 50 : 10),
         aiEnabled: options.enableAi !== false,
-        aiMaxFiles: options.aiMaxFiles ?? (depth === "deep" ? 25 : 10),
+        // AI analyses all selected files (up to maxFiles)
+        aiMaxFiles: options.aiMaxFiles ?? (depth === "deep" ? 50 : 10),
         includeMatchers: buildMatchers(normalizePatterns(options.includePatterns)),
         excludeMatchers: buildMatchers(normalizePatterns(options.excludePatterns)),
         selectedPaths: options.filePaths ? new Set(options.filePaths) : null,
     };
 }
 
-/** Filter file list to code files based on the scan config */
+/** Filter file list to scannable files based on the scan config */
 export function filterCodeFiles(
     files: Array<{ path: string; sha?: string }>,
     config: SecurityScanConfig
@@ -138,8 +142,13 @@ export function filterCodeFiles(
         .filter(({ path }) => {
             const isCode =
                 /\.(js|jsx|ts|tsx|py|java|php|rb|go|rs)$/i.test(path) ||
+                /\.(ya?ml|toml|json|env|ini|config|cfg)$/i.test(path) ||
+                /\.env(\.|$)/i.test(path) ||
                 path === "package.json";
             if (!isCode) return false;
+
+            const isLockfile = /package-lock\.json$|yarn\.lock$|pnpm-lock\.yaml$|Gemfile\.lock$|poetry\.lock$|composer\.lock$/i.test(path);
+            if (isLockfile) return false;
             if (config.selectedPaths && !config.selectedPaths.has(path)) return false;
             if (config.includeMatchers.length > 0 && !matchesAny(path, config.includeMatchers))
                 return false;
@@ -155,13 +164,16 @@ export function filterCodeFiles(
 /**
  * Run a full security scan on a repository.
  * Accepts optional injectable deps for testing without real API calls.
+ *
+ * @param allFilePaths - Complete list of all file paths in the repo (for LLM context)
  */
 export async function runSecurityScan(
     owner: string,
     repo: string,
     files: Array<{ path: string; sha?: string }>,
     config: SecurityScanConfig,
-    deps: SecurityScanDeps = {}
+    deps: SecurityScanDeps = {},
+    allFilePaths: string[] = []
 ): Promise<{
     findings: SecurityFinding[];
     summary: ScanSummary & { debug?: Record<string, number> };
@@ -178,8 +190,12 @@ export async function runSecurityScan(
     const fetchContent = deps.fetchFileContent ?? getFileContent;
     const runAi = deps.runAiAnalysis ?? analyzeCodeWithGemini;
 
-    const codeFiles = filterCodeFiles(files, config);
-    console.log(`🔍 Security Scan: ${codeFiles.length} code files selected`);
+    // Sort by risk score first, then take top maxFiles
+    const riskSorted = [...files].sort(
+        (a, b) => scorePathRisk(b.path) - scorePathRisk(a.path)
+    );
+    const codeFiles = filterCodeFiles(riskSorted, config);
+    console.log(`🔍 Security Scan [${config.depth}]: ${codeFiles.length} files selected (of ${files.length} total)`);
 
     // Fetch file contents
     const filesWithContent: Array<{ path: string; content: string }> = [];
@@ -198,35 +214,32 @@ export async function runSecurityScan(
 
     console.log(`📄 Fetched ${filesWithContent.length} files`);
 
-    // Pattern-based scan
+    // Pattern-based scan (secrets + code patterns + config issues + deps)
     const patternFindings = scanFiles(filesWithContent);
 
-    // AI-assisted scan
+    // AI-assisted scan (HIGH thinking, with full repo context)
     let aiFindings: SecurityFinding[] = [];
     let aiFilesSelected = 0;
 
-    if (config.aiEnabled) {
+    if (config.aiEnabled && filesWithContent.length > 0) {
         try {
-            const filesByRisk = [...filesWithContent].sort(
-                (a, b) => scorePathRisk(b.path) - scorePathRisk(a.path)
-            );
             const patternHitFiles = new Set(patternFindings.map((f) => f.file));
 
-            // Prioritise files that already had pattern hits
-            const aiCandidates: Array<{ path: string; content: string }> = [];
-            for (const file of filesByRisk) {
-                if (patternHitFiles.has(file.path)) aiCandidates.push(file);
+            // Prioritise files that already had pattern hits, then by risk score
+            const prioritised: Array<{ path: string; content: string }> = [];
+            for (const file of filesWithContent) {
+                if (patternHitFiles.has(file.path)) prioritised.push(file);
             }
-            for (const file of filesByRisk) {
-                if (aiCandidates.length >= config.aiMaxFiles) break;
-                if (!aiCandidates.find((f) => f.path === file.path)) aiCandidates.push(file);
+            for (const file of filesWithContent) {
+                if (!prioritised.find((f) => f.path === file.path)) prioritised.push(file);
             }
 
-            const aiFiles = aiCandidates.slice(0, config.aiMaxFiles);
+            const aiFiles = prioritised.slice(0, config.aiMaxFiles);
             aiFilesSelected = aiFiles.length;
 
             if (aiFiles.length > 0) {
-                aiFindings = await runAi(aiFiles);
+                // Pass full repo path list so the LLM has structural context
+                aiFindings = await runAi(aiFiles, allFilePaths.length > 0 ? allFilePaths : files.map(f => f.path));
             }
         } catch (err) {
             console.warn("AI security analysis failed, using pattern results only:", err);

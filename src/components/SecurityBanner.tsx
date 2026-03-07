@@ -14,7 +14,7 @@ export default function SecurityBanner() {
                         <div>
                             <h3 className="text-xl md:text-2xl font-bold text-white mb-2">Zero Data Retention. Period.</h3>
                             <p className="text-zinc-400 text-sm leading-relaxed max-w-lg">
-                                Your codebase is your intellectual property. Our models do not train on your private code. Everything is ephemeral and secured with enterprise-grade encryption.
+                                Your codebase is your intellectual property. Our models do not train on your private code. Scan findings are stored securely for your history, while code analysis remains private.
                             </p>
                         </div>
                     </div>

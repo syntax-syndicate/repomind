@@ -1,4 +1,6 @@
 import { useRef, useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
+import { toast } from "sonner";
 import { Send, Zap, Brain, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,6 +16,7 @@ interface ChatInputProps {
     allowEmptySubmit?: boolean;
     modelPreference?: ModelPreference;
     setModelPreference?: (pref: ModelPreference) => void;
+    onRequireAuth?: () => void;
 }
 
 export function ChatInput({
@@ -25,8 +28,10 @@ export function ChatInput({
     loading,
     allowEmptySubmit,
     modelPreference = "flash",
-    setModelPreference
+    setModelPreference,
+    onRequireAuth
 }: ChatInputProps) {
+    const { data: session } = useSession();
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const [isMobile, setIsMobile] = useState(false);
     const [showModelDropdown, setShowModelDropdown] = useState(false);
@@ -154,6 +159,10 @@ export function ChatInput({
                                 <button
                                     type="button"
                                     onClick={() => {
+                                        if (!session) {
+                                            onRequireAuth?.();
+                                            return;
+                                        }
                                         setModelPreference?.("thinking");
                                         setShowModelDropdown(false);
                                     }}

@@ -13,7 +13,7 @@
 import { analyzeFileSelection, answerWithContextStream } from "@/lib/gemini";
 import { getFileContentBatch } from "@/lib/github";
 import { countTokens, MAX_TOKENS } from "@/lib/tokens";
-import { getCachedRepoQueryAnswer, cacheRepoQueryAnswer } from "@/lib/cache";
+import { getCachedRepoQueryAnswer, cacheRepoQueryAnswer, getLatestRepoQueryAnswer } from "@/lib/cache";
 import type { StreamUpdate } from "@/lib/streaming-types";
 import type { GitHubProfile } from "@/lib/github";
 import type { ModelPreference } from "@/lib/ai-client";
@@ -41,7 +41,9 @@ export interface QueryPipelineDeps {
         query: string,
         filePaths: string[],
         owner: string,
-        repo: string
+        repo: string,
+        modelPreference?: ModelPreference,
+        history?: { role: "user" | "model"; content: string }[]
     ) => Promise<string[]>;
 
     /** Fetches file content in batch — defaults to GitHub API */
@@ -66,9 +68,9 @@ export interface QueryPipelineDeps {
 
 /** Binary/generated files that add noise without value for AI analysis */
 const SKIP_PATTERN =
-    /\.(png|jpg|jpeg|gif|svg|ico|lock|pdf|zip|tar|gz|map|wasm|min\.js|min\.css)$/i;
+    /(\.(png|jpg|jpeg|gif|svg|ico|lock|pdf|zip|tar|gz|map|wasm|min\.js|min\.css|woff|woff2|ttf|otf|eot)|package-lock\.json|yarn\.lock)$/i;
 
-function pruneFilePaths(paths: string[]): string[] {
+export function pruneFilePaths(paths: string[]): string[] {
     return paths.filter(
         (p) =>
             !SKIP_PATTERN.test(p) &&
@@ -97,14 +99,39 @@ export async function* executeRepoQueryStream(
     const { query, owner, repo, filePaths, history = [], profileData, modelPreference } = params;
 
     try {
+        const isThinking = modelPreference === "thinking";
+
+        // Step 0: Short-circuit check
+        // Check if we have ANY recent answer for this exact query in this repo.
+        // This bypasses file selection, fetching, and AI generation entirely (0.1s hit).
+        const shortCircuit = await getLatestRepoQueryAnswer(owner, repo, query);
+        if (shortCircuit) {
+            console.log(`🚀 Short-Circuit Cache Hit: ${owner}/${repo} -> ${query}`);
+            yield { type: "content", text: shortCircuit, append: true };
+            yield { type: "complete", relevantFiles: [] }; // In short-circuit we don't know the files, or we could cache them too.
+            return;
+        }
+
         // Step 1: Select relevant files
-        yield { type: "status", message: "Analyzing repository structure...", progress: 15 };
+        yield {
+            type: "status",
+            message: isThinking
+                ? `Reasoning: Identifying files relevant to "${query.slice(0, 60)}${query.length > 60 ? '...' : ''}"...`
+                : "Analyzing repository structure...",
+            progress: 15
+        };
 
         const prunedPaths = pruneFilePaths(filePaths);
-        const relevantFiles = await analyzeFiles(query, prunedPaths, owner, repo);
+        const relevantFiles = await analyzeFiles(query, prunedPaths, owner, repo, modelPreference, history);
 
         yield { type: "files", files: relevantFiles };
-        yield { type: "status", message: "Reading selected files...", progress: 40 };
+        yield {
+            type: "status",
+            message: isThinking
+                ? `Process: Loading ${relevantFiles.length} file${relevantFiles.length !== 1 ? 's' : ''} for context analysis...`
+                : "Reading selected files...",
+            progress: 40
+        };
 
         // Step 2: Fetch file content with token budget
         const fileResults = await fetchFiles(
@@ -132,7 +159,13 @@ export async function* executeRepoQueryStream(
         }
 
         // Step 3: Stream AI response
-        yield { type: "status", message: "Thinking...", progress: 70 };
+        yield {
+            type: "status",
+            message: isThinking
+                ? "Process: Formulating a detailed response based on the code context..."
+                : "Thinking...",
+            progress: 70
+        };
 
         const stream = streamAnswer(
             query,
@@ -144,7 +177,11 @@ export async function* executeRepoQueryStream(
         );
 
         for await (const chunk of stream) {
-            yield { type: "content", text: chunk, append: true };
+            if (chunk.startsWith("THOUGHT:")) {
+                yield { type: "thought", text: chunk.replace("THOUGHT:", "") };
+            } else {
+                yield { type: "content", text: chunk, append: true };
+            }
         }
 
         yield { type: "complete", relevantFiles };
@@ -169,7 +206,7 @@ export async function executeRepoQuery(
     // Attempt cache hit first
     const { analyzeFiles = analyzeFileSelection } = deps;
     const prunedPaths = pruneFilePaths(params.filePaths);
-    const selectedFiles = await analyzeFiles(params.query, prunedPaths, params.owner, params.repo);
+    const selectedFiles = await analyzeFiles(params.query, prunedPaths, params.owner, params.repo, params.modelPreference, params.history);
     const cached = await getCachedRepoQueryAnswer(params.owner, params.repo, params.query, selectedFiles);
 
     if (cached) {

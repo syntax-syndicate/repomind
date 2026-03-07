@@ -6,6 +6,6 @@ export default function robots(): MetadataRoute.Robots {
             userAgent: "*",
             allow: "/",
         },
-        sitemap: "https://repomind-ai.vercel.app/sitemap.xml",
+        sitemap: `${process.env.NEXT_PUBLIC_APP_URL || 'https://repomind.in'}/sitemap.xml`,
     };
 }

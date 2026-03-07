@@ -1,9 +1,11 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { ExternalLink, MapPin, Link as LinkIcon, Github } from "lucide-react";
+import { ExternalLink, MapPin, Link as LinkIcon, Github, Loader2 } from "lucide-react";
 import { UserIcon } from "@/components/icons/UserIcon";
+import { fetchProfile } from "@/app/actions";
 
 interface DeveloperCardProps {
     username: string;
@@ -14,7 +16,43 @@ interface DeveloperCardProps {
     blog?: string;
 }
 
-export function DeveloperCard({ username, name, avatar, bio, location, blog }: DeveloperCardProps) {
+export function DeveloperCard({ username, name: initialName, avatar: initialAvatar, bio: initialBio, location: initialLocation, blog: initialBlog }: DeveloperCardProps) {
+    const [profile, setProfile] = useState({
+        name: initialName,
+        avatar: initialAvatar,
+        bio: initialBio,
+        location: initialLocation,
+        blog: initialBlog
+    });
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        // If we have some data but maybe not everything, or if we want to ensure accuracy
+        // we fetch the latest from GitHub.
+        const shouldFetch = !profile.avatar || !profile.bio || username === "403errors"; // Priority for creator check
+
+        if (username && (shouldFetch || !profile.name)) {
+            setLoading(true);
+            fetchProfile(username)
+                .then((data) => {
+                    if (data) {
+                        setProfile({
+                            name: data.name || profile.name,
+                            avatar: data.avatar_url || profile.avatar,
+                            bio: data.bio || profile.bio,
+                            location: data.location || profile.location,
+                            blog: data.blog || profile.blog
+                        });
+                    }
+                })
+                .catch(console.error)
+                .finally(() => setLoading(false));
+        }
+    }, [username]);
+
+    // Use a stable avatar source: provided -> fetched -> github direct fallback
+    const avatarSrc = profile.avatar || `https://github.com/${username}.png`;
+
     return (
         <motion.div
             initial={{ opacity: 0, y: 10 }}
@@ -27,49 +65,59 @@ export function DeveloperCard({ username, name, avatar, bio, location, blog }: D
 
                 <div className="relative flex gap-4">
                     {/* Avatar */}
-                    <img
-                        src={avatar || `https://github.com/${username}.png`}
-                        alt={username}
-                        className="w-16 h-16 rounded-full border-2 border-white/20 bg-zinc-800"
-                        onError={(e) => {
-                            // Fallback to icon if image fails to load
-                            e.currentTarget.style.display = 'none';
-                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                        }}
-                    />
-                    <div className="hidden w-16 h-16 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center overflow-hidden">
-                        <UserIcon className="w-full h-full text-white" />
+                    <div className="relative w-16 h-16 shrink-0">
+                        <img
+                            src={avatarSrc}
+                            alt={username}
+                            className="w-16 h-16 rounded-full border-2 border-white/20 bg-zinc-800 object-cover"
+                            onError={(e) => {
+                                // Fallback to icon if image fails to load
+                                e.currentTarget.style.display = 'none';
+                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                            }}
+                        />
+                        <div className="hidden w-16 h-16 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center overflow-hidden">
+                            <UserIcon className="w-full h-full text-white" />
+                        </div>
+                        {loading && !profile.avatar && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full">
+                                <Loader2 className="w-5 h-5 animate-spin text-white" />
+                            </div>
+                        )}
                     </div>
 
-                    <div className="flex-1">
+                    <div className="flex-1 min-w-0">
                         {/* Name & Username */}
-                        <h3 className="text-lg font-semibold text-white mb-1">
-                            {name || username}
-                        </h3>
-                        <p className="text-sm text-zinc-400 mb-2">@{username}</p>
+                        <div className="flex items-center gap-2 mb-1">
+                            <h3 className="text-lg font-semibold text-white truncate">
+                                {profile.name || username}
+                            </h3>
+                            {loading && <Loader2 className="w-3 h-3 animate-spin text-zinc-500" />}
+                        </div>
+                        <p className="text-sm text-zinc-400 mb-2 truncate">@{username}</p>
 
                         {/* Bio */}
-                        {bio && (
-                            <p className="text-zinc-400 text-sm mb-3 line-clamp-2">{bio}</p>
+                        {profile.bio && (
+                            <p className="text-zinc-400 text-sm mb-3 line-clamp-2">{profile.bio}</p>
                         )}
 
                         {/* Additional info */}
                         <div className="flex flex-wrap gap-3 text-xs text-zinc-500 mb-4">
-                            {location && (
+                            {profile.location && (
                                 <span className="flex items-center gap-1">
                                     <MapPin className="w-3 h-3" />
-                                    {location}
+                                    {profile.location}
                                 </span>
                             )}
-                            {blog && (
+                            {profile.blog && (
                                 <a
-                                    href={blog}
+                                    href={profile.blog.startsWith('http') ? profile.blog : `https://${profile.blog}`}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="flex items-center gap-1 hover:text-purple-400 transition-colors"
+                                    className="flex items-center gap-1 hover:text-purple-400 transition-colors truncate max-w-[200px]"
                                 >
                                     <LinkIcon className="w-3 h-3" />
-                                    {blog.replace(/https?:\/\//, '').slice(0, 30)}
+                                    {profile.blog.replace(/https?:\/\//, '').slice(0, 30)}
                                 </a>
                             )}
                         </div>

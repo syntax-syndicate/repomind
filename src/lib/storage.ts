@@ -1,14 +1,12 @@
 /**
  * Smart localStorage management for conversation persistence
  * Implements 10MB limit with automatic cleanup of oldest conversations
+ * Supports cloud syncing for authenticated users
  */
+import axios from 'axios';
+import type { ChatRole, StoredMessage } from "@/lib/chat-types";
 
-export interface Message {
-    id: string;
-    role: 'user' | 'model';
-    content: string;
-    relevantFiles?: string[];
-}
+export type Message = StoredMessage & Record<string, unknown>;
 
 interface StoredConversation {
     owner: string;
@@ -22,13 +20,59 @@ const MAX_STORAGE = 10 * MB; // 10MB limit
 const TARGET_SIZE = 8 * MB; // Clean up to 8MB (leave buffer)
 const STORAGE_PREFIX = 'repomind_chat_';
 const PROFILE_PREFIX = 'repomind_profile_';
+const CHAT_ROLES = new Set<ChatRole>(["user", "model"]);
+
+function isRole(value: unknown): value is ChatRole {
+    return typeof value === "string" && CHAT_ROLES.has(value as ChatRole);
+}
+
+function normalizeMessage(raw: unknown): Message | null {
+    if (!raw || typeof raw !== "object") {
+        return null;
+    }
+
+    const candidate = raw as Partial<Message>;
+    if (typeof candidate.id !== "string") {
+        return null;
+    }
+    if (!isRole(candidate.role)) {
+        return null;
+    }
+    if (typeof candidate.content !== "string") {
+        return null;
+    }
+
+    return {
+        ...candidate,
+        id: candidate.id,
+        role: candidate.role,
+        content: candidate.content,
+        relevantFiles: Array.isArray(candidate.relevantFiles)
+            ? candidate.relevantFiles.filter((file): file is string => typeof file === "string")
+            : undefined,
+    };
+}
+
+function normalizeMessages(rawMessages: unknown): Message[] {
+    if (!Array.isArray(rawMessages)) {
+        return [];
+    }
+
+    return rawMessages
+        .map(normalizeMessage)
+        .filter((message): message is Message => Boolean(message));
+}
 
 /**
- * Save conversation to localStorage with auto-cleanup
+ * Save conversation to localStorage with auto-cleanup (and optionally cloud storage)
  */
-export function saveConversation(owner: string, repo: string, messages: Message[]): void {
+export async function saveConversation(owner: string, repo: string, messages: Message[], useCloudStorage = false): Promise<void> {
     try {
-        // Check storage size before saving
+        if (useCloudStorage) {
+            await axios.post('/api/chat', { owner, repo, messages }).catch(err => console.error('Failed to sync to cloud:', err));
+        }
+
+        // Always save locally as fallback/cache
         const currentSize = getStorageSize();
         if (currentSize > MAX_STORAGE) {
             console.log('Storage limit reached, cleaning up...');
@@ -44,10 +88,9 @@ export function saveConversation(owner: string, repo: string, messages: Message[
         };
 
         localStorage.setItem(key, JSON.stringify(data));
-    } catch (e: any) {
-        if (e.name === 'QuotaExceededError') {
+    } catch (e: unknown) {
+        if (e instanceof Error && e.name === 'QuotaExceededError') {
             console.warn('localStorage quota exceeded, forcing cleanup...');
-            // Force cleanup and retry
             cleanupOldConversations(TARGET_SIZE);
             try {
                 const key = `${STORAGE_PREFIX}${owner}_${repo}`;
@@ -68,16 +111,34 @@ export function saveConversation(owner: string, repo: string, messages: Message[
 }
 
 /**
- * Load conversation from localStorage
+ * Load conversation from localStorage (or cloud if specified)
  */
-export function loadConversation(owner: string, repo: string): Message[] | null {
+export async function loadConversation(owner: string, repo: string, useCloudStorage = false): Promise<Message[] | null> {
     try {
+        if (useCloudStorage) {
+            try {
+                const { data } = await axios.get('/api/chat', { params: { owner, repo } });
+                if (data.messages && data.messages.length > 0) {
+                    const normalizedCloudMessages = normalizeMessages(data.messages);
+                    if (normalizedCloudMessages.length === 0) {
+                        return null;
+                    }
+                    // Update local cache
+                    saveConversation(owner, repo, normalizedCloudMessages, false);
+                    return normalizedCloudMessages;
+                }
+            } catch (err) {
+                console.error('Failed to load from cloud, falling back to local:', err);
+            }
+        }
+
         const key = `${STORAGE_PREFIX}${owner}_${repo}`;
         const data = localStorage.getItem(key);
         if (!data) return null;
 
-        const parsed: StoredConversation = JSON.parse(data);
-        return parsed.messages;
+        const parsed = JSON.parse(data) as StoredConversation;
+        const normalizedMessages = normalizeMessages(parsed.messages);
+        return normalizedMessages.length > 0 ? normalizedMessages : null;
     } catch (e) {
         console.error('Failed to load conversation:', e);
         return null;
@@ -87,8 +148,11 @@ export function loadConversation(owner: string, repo: string): Message[] | null 
 /**
  * Clear conversation from localStorage
  */
-export function clearConversation(owner: string, repo: string): void {
+export async function clearConversation(owner: string, repo: string, useCloudStorage = false): Promise<void> {
     try {
+        if (useCloudStorage) {
+            await axios.delete('/api/chat', { params: { owner, repo } }).catch(err => console.error('Failed to clear from cloud:', err));
+        }
         const key = `${STORAGE_PREFIX}${owner}_${repo}`;
         localStorage.removeItem(key);
     } catch (e) {
@@ -99,8 +163,12 @@ export function clearConversation(owner: string, repo: string): void {
 /**
  * Save profile conversation
  */
-export function saveProfileConversation(username: string, messages: Message[]): void {
+export async function saveProfileConversation(username: string, messages: Message[], useCloudStorage = false): Promise<void> {
     try {
+        if (useCloudStorage) {
+            await axios.post('/api/chat', { username, messages }).catch(err => console.error('Failed to sync profile chat to cloud:', err));
+        }
+
         const currentSize = getStorageSize();
         if (currentSize > MAX_STORAGE) {
             cleanupOldConversations(TARGET_SIZE);
@@ -114,8 +182,8 @@ export function saveProfileConversation(username: string, messages: Message[]): 
         };
 
         localStorage.setItem(key, JSON.stringify(data));
-    } catch (e: any) {
-        if (e.name === 'QuotaExceededError') {
+    } catch (e: unknown) {
+        if (e instanceof Error && e.name === 'QuotaExceededError') {
             cleanupOldConversations(TARGET_SIZE);
             try {
                 const key = `${PROFILE_PREFIX}${username}`;
@@ -130,14 +198,31 @@ export function saveProfileConversation(username: string, messages: Message[]): 
 /**
  * Load profile conversation
  */
-export function loadProfileConversation(username: string): Message[] | null {
+export async function loadProfileConversation(username: string, useCloudStorage = false): Promise<Message[] | null> {
     try {
+        if (useCloudStorage) {
+            try {
+                const { data } = await axios.get('/api/chat', { params: { username } });
+                if (data.messages && data.messages.length > 0) {
+                    const normalizedCloudMessages = normalizeMessages(data.messages);
+                    if (normalizedCloudMessages.length === 0) {
+                        return null;
+                    }
+                    saveProfileConversation(username, normalizedCloudMessages, false);
+                    return normalizedCloudMessages;
+                }
+            } catch (err) {
+                console.error('Failed to load profile from cloud, falling back to local:', err);
+            }
+        }
+
         const key = `${PROFILE_PREFIX}${username}`;
         const data = localStorage.getItem(key);
         if (!data) return null;
 
-        const parsed = JSON.parse(data);
-        return parsed.messages;
+        const parsed = JSON.parse(data) as { messages?: unknown };
+        const normalizedMessages = normalizeMessages(parsed.messages);
+        return normalizedMessages.length > 0 ? normalizedMessages : null;
     } catch (e) {
         console.error('Failed to load profile conversation:', e);
         return null;
@@ -147,8 +232,11 @@ export function loadProfileConversation(username: string): Message[] | null {
 /**
  * Clear profile conversation from localStorage
  */
-export function clearProfileConversation(username: string): void {
+export async function clearProfileConversation(username: string, useCloudStorage = false): Promise<void> {
     try {
+        if (useCloudStorage) {
+            await axios.delete('/api/chat', { params: { username } }).catch(err => console.error('Failed to clear profile chat from cloud:', err));
+        }
         const key = `${PROFILE_PREFIX}${username}`;
         localStorage.removeItem(key);
     } catch (e) {
@@ -162,14 +250,14 @@ export function clearProfileConversation(username: string): void {
 export function getStorageSize(): number {
     let total = 0;
 
-    for (let key in localStorage) {
-        if (key.startsWith(STORAGE_PREFIX) || key.startsWith(PROFILE_PREFIX)) {
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith(STORAGE_PREFIX) || key.startsWith(PROFILE_PREFIX))) {
             try {
-                const value = localStorage[key];
-                // UTF-16 uses 2 bytes per character
+                const value = localStorage.getItem(key) || "";
                 total += (value.length + key.length) * 2;
-            } catch (e) {
-                // Invalid key, skip it
+            } catch {
+                // Invalid key
             }
         }
     }
@@ -192,28 +280,26 @@ export function formatStorageSize(bytes: number): string {
 function cleanupOldConversations(targetSize: number): void {
     const conversations: Array<{ key: string; timestamp: number; size: number }> = [];
 
-    // Collect all conversations
-    for (let key in localStorage) {
-        if (key.startsWith(STORAGE_PREFIX) || key.startsWith(PROFILE_PREFIX)) {
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith(STORAGE_PREFIX) || key.startsWith(PROFILE_PREFIX))) {
             try {
-                const data = JSON.parse(localStorage[key]);
-                const size = (localStorage[key].length + key.length) * 2;
+                const value = localStorage.getItem(key) || "";
+                const data = JSON.parse(value);
+                const size = (value.length + key.length) * 2;
                 conversations.push({
                     key,
                     timestamp: data.timestamp || 0,
                     size
                 });
-            } catch (e) {
-                // Invalid data, delete it
+            } catch {
                 localStorage.removeItem(key);
             }
         }
     }
 
-    // Sort by timestamp (oldest first)
     conversations.sort((a, b) => a.timestamp - b.timestamp);
 
-    // Delete oldest conversations until we're under target size
     let currentSize = getStorageSize();
     let deletedCount = 0;
 
@@ -226,7 +312,7 @@ function cleanupOldConversations(targetSize: number): void {
     }
 
     if (deletedCount > 0) {
-        console.log(`Cleaned up ${deletedCount} old conversations, freed ${formatStorageSize(getStorageSize() - currentSize)}`);
+        console.log(`Cleaned up ${deletedCount} old conversations`);
     }
 }
 
@@ -235,8 +321,9 @@ function cleanupOldConversations(targetSize: number): void {
  */
 export function getAllConversationKeys(): string[] {
     const keys: string[] = [];
-    for (let key in localStorage) {
-        if (key.startsWith(STORAGE_PREFIX) || key.startsWith(PROFILE_PREFIX)) {
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith(STORAGE_PREFIX) || key.startsWith(PROFILE_PREFIX))) {
             keys.push(key);
         }
     }
@@ -244,17 +331,11 @@ export function getAllConversationKeys(): string[] {
 }
 
 /**
- * Get storage statistics
+ * Get storage stats
  */
-export function getStorageStats(): {
-    used: number;
-    available: number;
-    conversations: number;
-    percentage: number;
-} {
+export function getStorageStats(): { used: number; available: number; conversations: number; percentage: number } {
     const used = getStorageSize();
     const conversations = getAllConversationKeys().length;
-
     return {
         used,
         available: MAX_STORAGE - used,

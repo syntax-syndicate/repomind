@@ -9,11 +9,11 @@
 [![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
 [![Gemini AI](https://img.shields.io/badge/Gemini-3_Flash_Preview-blue)](https://ai.google.dev/)
 <br>
-[![Analyzed by RepoMind](https://img.shields.io/badge/Analyzed%20by-RepoMind-4F46E5?style=for-the-badge)](https://repomind-ai.vercel.app/repo/facebook/react)
+[![Analyzed by RepoMind](https://img.shields.io/badge/Analyzed%20by-RepoMind-4F46E5?style=for-the-badge)](https://repomind.in/repo/facebook/react)
 
-**[Try RepoMind now!](https://repomind-ai.vercel.app)** 
+**[Try RepoMind now!](https://repomind.in)** 
 
-**[Preview RepoMind on RepoMind 🐥](https://repomind-ai.vercel.app/repo/403errors/repomind)**
+**[Preview RepoMind on RepoMind 🐥](https://repomind.in/repo/403errors/repomind)**
 
 </div>
 

@@ -1,8 +1,6 @@
-export type ExportMessage = {
-    role: "user" | "model";
-    content: string;
-    relevantFiles?: string[];
-};
+import type { ChatMessageBase } from "@/lib/chat-types";
+
+export type ExportMessage = Pick<ChatMessageBase, "role" | "content" | "relevantFiles">;
 
 type MermaidRenderer = (code: string, id: string) => Promise<string>;
 type MermaidJsonConverter = (json: string) => string | null;
@@ -131,7 +129,7 @@ export function buildChatMarkdown(options: {
     let userTurn = 0;
     let assistantTurn = 0;
 
-    options.messages.forEach((message, index) => {
+    options.messages.forEach((message) => {
         if (message.role === "user") {
             userTurn += 1;
         } else {

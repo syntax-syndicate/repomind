@@ -10,8 +10,79 @@ import {
   getCachedFileTree,
   cacheRepoFullContext,
   getCachedRepoFullContext,
+  getCachedFilesBatch,
 } from "./cache";
 import { unstable_cache } from 'next/cache';
+
+interface ErrorWithStatus {
+  status?: number;
+  message?: string;
+}
+
+interface RepoLanguageEdge {
+  size: number;
+  node: {
+    name: string;
+    color: string | null;
+  };
+}
+
+interface RepoCommitEdge {
+  node: {
+    message: string;
+    committedDate: string;
+    author: {
+      name: string;
+      avatarUrl: string | null;
+      user: {
+        login: string;
+      } | null;
+    };
+  };
+}
+
+interface RepoDetailsGraphQLResponse {
+  repository: {
+    languages: {
+      totalSize: number;
+      edges: RepoLanguageEdge[];
+    };
+    defaultBranchRef: {
+      target: {
+        history: {
+          edges: RepoCommitEdge[];
+        };
+      };
+    };
+  };
+}
+
+function getErrorStatus(error: unknown): number | undefined {
+  if (error && typeof error === "object" && "status" in error) {
+    const status = (error as ErrorWithStatus).status;
+    return typeof status === "number" ? status : undefined;
+  }
+  return undefined;
+}
+
+function isErrorWithMessage(error: unknown): error is { message: string } {
+  return Boolean(
+    error &&
+    typeof error === "object" &&
+    "message" in error &&
+    typeof (error as { message?: unknown }).message === "string"
+  );
+}
+
+function isGitHubRepo(value: unknown): value is GitHubRepo {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    "name" in value &&
+    "full_name" in value &&
+    "default_branch" in value
+  );
+}
 
 // Validate GitHub token
 const githubToken = process.env.GITHUB_TOKEN;
@@ -26,7 +97,7 @@ const octokit = new Octokit({
     // This is intentional — it prevents stale data in edge/serverless deployments
     // where the module reloads frequently. Caching is handled at the application
     // layer via KV (see cache.ts) using SHA-based keys for automatic invalidation.
-    fetch: (url: string, options: any) => {
+    fetch: (url: string, options?: RequestInit) => {
       return fetch(url, {
         ...options,
         cache: "no-store",
@@ -194,6 +265,24 @@ export async function getRepo(owner: string, repo: string): Promise<GitHubRepo> 
   return data;
 }
 
+/**
+ * Fetch latest commit SHA for the repository default branch.
+ * Intentionally bypasses app-level metadata cache to keep revision checks fresh.
+ */
+export async function getDefaultBranchHeadSha(owner: string, repo: string): Promise<string> {
+  const { data: repoData } = await octokit.rest.repos.get({
+    owner,
+    repo,
+  });
+  const defaultBranch = repoData.default_branch || "main";
+  const { data: branchData } = await octokit.rest.repos.getBranch({
+    owner,
+    repo,
+    branch: defaultBranch,
+  });
+  return branchData.commit.sha;
+}
+
 export async function getRepoFileTree(owner: string, repo: string, branch: string = "main"): Promise<{ tree: FileNode[], hiddenFiles: { path: string; reason: string }[] }> {
   // Get the tree recursively
   // First, get the branch SHA
@@ -205,7 +294,7 @@ export async function getRepoFileTree(owner: string, repo: string, branch: strin
       branch,
     });
     sha = branchData.commit.sha;
-  } catch (e) {
+  } catch {
     // If branch fetch fails, try to use the default branch from repo details or just let it fail later
     console.warn("Could not fetch branch details, trying with provided name/sha");
   }
@@ -279,7 +368,7 @@ export async function getRepoDetailsGraphQL(owner: string, repo: string) {
   const { graphql } = await import("@octokit/graphql");
 
   try {
-    const data: any = await graphql(REPO_DETAILS_QUERY, {
+    const data = await graphql<RepoDetailsGraphQLResponse>(REPO_DETAILS_QUERY, {
       owner,
       name: repo,
       headers: {
@@ -287,14 +376,14 @@ export async function getRepoDetailsGraphQL(owner: string, repo: string) {
       },
     });
 
-    const languages = data.repository.languages.edges.map((edge: any) => ({
+    const languages = data.repository.languages.edges.map((edge) => ({
       name: edge.node.name,
       color: edge.node.color,
       size: edge.size,
       percentage: ((edge.size / data.repository.languages.totalSize) * 100).toFixed(1)
     }));
 
-    const commits = data.repository.defaultBranchRef.target.history.edges.map((edge: any) => ({
+    const commits = data.repository.defaultBranchRef.target.history.edges.map((edge) => ({
       message: edge.node.message,
       date: edge.node.committedDate,
       author: {
@@ -323,7 +412,9 @@ async function getRepoFullContextRaw(owner: string, repo: string) {
   const cached = await getCachedRepoFullContext(owner, repo);
   if (cached) {
     // Put into memory caches for efficiency if needed
-    repoCache.set(`${owner}/${repo}`, cached.metadata);
+    if (isGitHubRepo(cached.metadata)) {
+      repoCache.set(`${owner}/${repo}`, cached.metadata);
+    }
     return cached;
   }
 
@@ -397,8 +488,11 @@ export async function getFileContent(
         const content = Buffer.from(data.content, "base64").toString("utf-8");
         await cacheFile(owner, repo, path, sha, content);
         return content;
-      } catch (e) {
-        console.warn(`Failed to fetch blob for ${path} with SHA ${sha}, falling back to standard fetch`);
+      } catch (error: unknown) {
+        const status = getErrorStatus(error);
+        if (status !== 404 && status !== 422) {
+          console.warn(`Failed to fetch blob for ${path} with SHA ${sha}, falling back to standard fetch`);
+        }
       }
     }
 
@@ -429,8 +523,10 @@ export async function getFileContent(
       return content;
     }
     throw new Error("Not a file");
-  } catch (error) {
-    console.error("Error fetching file content:", error);
+  } catch (error: unknown) {
+    if (!isErrorWithMessage(error) || error.message !== "Not a file") {
+      console.error("Error fetching file content:", error);
+    }
     throw error;
   }
 }
@@ -443,17 +539,42 @@ export async function getFileContentBatch(
   repo: string,
   files: Array<{ path: string; sha?: string }>
 ): Promise<Array<{ path: string; content: string | null }>> {
-  const promises = files.map(async ({ path, sha }) => {
+  // Step 1: Separate files that already have SHAs (eligible for batch cache hit)
+  const filesWithSha = files.filter(f => !!f.sha) as Array<{ path: string; sha: string }>;
+  const filesWithoutSha = files.filter(f => !f.sha);
+
+  // Step 2: Batch fetch from KV for files with SHAs
+  const cachedContents = await getCachedFilesBatch(owner, repo, filesWithSha);
+
+  const results: Array<{ path: string; content: string | null }> = [];
+  const missingFromCache: Array<{ path: string; sha: string }> = [];
+
+  // Map results back
+  filesWithSha.forEach((file, i) => {
+    if (cachedContents[i]) {
+      results.push({ path: file.path, content: cachedContents[i] });
+    } else {
+      missingFromCache.push(file);
+    }
+  });
+
+  // Step 3: Fetch remaining files (those without SHA or missing from cache)
+  // We process these in parallel as before, but the number should be much smaller now
+  const remainingFiles = [...filesWithoutSha, ...missingFromCache];
+  const remainingPromises = remainingFiles.map(async ({ path, sha }) => {
     try {
       const content = await getFileContent(owner, repo, path, sha);
       return { path, content };
-    } catch (error) {
-      console.warn(`Failed to fetch ${path}:`, error);
+    } catch (error: unknown) {
+      if (!isErrorWithMessage(error) || error.message !== "Not a file") {
+        console.warn(`Failed to fetch ${path}:`, error);
+      }
       return { path, content: null };
     }
   });
 
-  return await Promise.all(promises);
+  const remainingResults = await Promise.all(remainingPromises);
+  return [...results, ...remainingResults];
 }
 
 export async function getProfileReadme(username: string) {
@@ -463,7 +584,7 @@ export async function getProfileReadme(username: string) {
       repo: username,
     });
     return Buffer.from(data.content, "base64").toString("utf-8");
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -475,7 +596,7 @@ export async function getRepoReadme(owner: string, repo: string) {
       repo,
     });
     return Buffer.from(data.content, "base64").toString("utf-8");
-  } catch (error) {
+  } catch {
     return null;
   }
 }
@@ -490,9 +611,26 @@ export async function getUserRepos(username: string): Promise<GitHubRepo[]> {
       sort: "updated",
       per_page: 100, // Get up to 100 most recent repos
     });
-    return data as any;
+    return data as unknown as GitHubRepo[];
   } catch (e) {
     console.error("Failed to fetch user repos", e);
+    return [];
+  }
+}
+
+/**
+ * Get public starred repositories for a user
+ */
+export async function getStarredRepos(username: string): Promise<GitHubRepo[]> {
+  try {
+    const { data } = await octokit.rest.activity.listReposStarredByUser({
+      username,
+      sort: "created",
+      per_page: 50,
+    });
+    return data as unknown as GitHubRepo[];
+  } catch (e) {
+    console.error("Failed to fetch starred repos", e);
     return [];
   }
 }
@@ -519,7 +657,7 @@ export async function getReposReadmes(username: string) {
           forks: repo.forks_count,
           language: repo.language,
         };
-      } catch (e) {
+      } catch {
         return null;
       }
     });
@@ -536,6 +674,71 @@ export async function getReposReadmes(username: string) {
     }[];
   } catch (error) {
     console.error("Error fetching repos:", error);
+    return [];
+  }
+}
+
+/**
+ * Get recent commits authored by a specific user across a list of their repositories.
+ * Useful for determining qualitative traits like commit quality, coding style, and habits.
+ */
+export async function getRecentCommitsForUser(username: string, repos: string[], maxTokens: number = 30) {
+  try {
+    const commitsPromises = repos.slice(0, 10).map(async (repo) => {
+      try {
+        const { data } = await octokit.rest.repos.listCommits({
+          owner: username,
+          repo,
+          author: username,
+          per_page: 5,
+        });
+        return data.map(commit => ({
+          repo,
+          message: commit.commit.message,
+          date: commit.commit.author?.date,
+          sha: commit.sha.substring(0, 7)
+        }));
+      } catch {
+        return [];
+      }
+    });
+
+    const results = await Promise.all(commitsPromises);
+    const flatCommits = results.flat().sort((a, b) => {
+      return new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime();
+    });
+
+    return flatCommits.slice(0, maxTokens);
+  } catch (error) {
+    console.error(`Failed to fetch recent commits for ${username}:`, error);
+    return [];
+  }
+}
+
+/**
+ * Get repositories for a user sorted by creation date.
+ * Useful for building a timeline of the user's technology evolution.
+ */
+export async function getUserReposByAge(username: string, sortDirection: 'oldest' | 'newest' = 'oldest', limit: number = 10) {
+  try {
+    // We already have getUserRepos which fetches up to 100 recent repos.
+    // However, to get the absolute oldest, we should use the standard fetch but sort appropriately.
+    const { data } = await octokit.rest.repos.listForUser({
+      username,
+      sort: "created",
+      direction: sortDirection === 'oldest' ? 'asc' : 'desc',
+      per_page: limit,
+    });
+
+    return data.map(r => ({
+      name: r.name,
+      description: r.description,
+      language: r.language,
+      created_at: r.created_at,
+      stargazers_count: r.stargazers_count,
+    }));
+  } catch (error) {
+    console.error(`Failed to fetch repos by age for ${username}:`, error);
     return [];
   }
 }

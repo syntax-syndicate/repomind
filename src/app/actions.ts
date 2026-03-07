@@ -11,9 +11,12 @@
  */
 
 import { headers, cookies } from "next/headers";
+import { auth } from "@/lib/auth";
+import { kv } from "@vercel/kv";
 import {
     getProfile,
     getRepo,
+    getDefaultBranchHeadSha,
     getRepoFileTree,
     getFileContent,
     getFileContentBatch,
@@ -21,13 +24,18 @@ import {
     getUserRepos,
     getRepoReadme,
 } from "@/lib/github";
-import { trackEvent, getPublicStats } from "@/lib/analytics";
+import {
+    trackEvent,
+    getPublicStats,
+    trackReportConversionEvent,
+    type ReportConversionEvent,
+} from "@/lib/analytics";
 import { generateSecurityPatch } from "@/lib/gemini-security";
 import type { StreamUpdate } from "@/lib/streaming-types";
 import type { GitHubProfile } from "@/lib/github";
 import type { SecurityFinding, ScanSummary } from "@/lib/security-scanner";
 import type { SearchResult } from "@/lib/search-engine";
-import { getCachedRepoQueryAnswer, cacheRepoQueryAnswer } from "@/lib/cache";
+import { getCachedSecurityScanResult, cacheSecurityScanResult } from "@/lib/cache";
 import type { ModelPreference } from "@/lib/ai-client";
 
 // ─── Services & Domain ────────────────────────────────────────────────────────
@@ -43,6 +51,10 @@ import {
     type SecurityScanDeps,
 } from "@/lib/services/security-service";
 import {
+    saveScanResult
+} from "@/lib/services/scan-storage";
+import { recordSearch, getRecentSearches as _getRecentSearches } from "@/lib/services/history-service";
+import {
     searchRepositoryCode as _searchRepositoryCode,
 } from "@/lib/services/artifact-service";
 import {
@@ -52,6 +64,7 @@ import {
     type RepoReadmeSummary,
 } from "@/lib/domain";
 import { answerWithContext, answerWithContextStream } from "@/lib/gemini";
+import { mapProfileStreamChunk } from "@/lib/profile-stream";
 
 // ─── Private: Analytics tracking ─────────────────────────────────────────────
 
@@ -93,14 +106,18 @@ async function buildFullProfileContext(
     const ctx = toProfileContext(input.profile);
     let context = buildProfileContextString(ctx, input.profileReadme);
 
-    for (const readme of input.repoReadmes) {
-        let content = readme.content;
-        if (!content && query.toLowerCase().includes(readme.repo.toLowerCase())) {
-            onProgress?.(`Reading ${readme.repo}...`);
-            content = (await getRepoReadme(input.username, readme.repo)) ?? "";
-        }
-        context += buildRepoReadmeEntry({ ...readme, content });
-    }
+    const readmeResults = await Promise.all(
+        input.repoReadmes.map(async (readme) => {
+            let content = readme.content;
+            if (!content && query.toLowerCase().includes(readme.repo.toLowerCase())) {
+                onProgress?.(`Reading ${readme.repo}...`);
+                content = (await getRepoReadme(input.username, readme.repo)) ?? "";
+            }
+            return buildRepoReadmeEntry({ ...readme, content });
+        })
+    );
+
+    context += readmeResults.join("");
 
     return context || `No profile data found for ${input.username}.`;
 }
@@ -109,9 +126,15 @@ async function buildFullProfileContext(
 
 export async function fetchGitHubData(input: string) {
     const parts = input.split("/");
+    const session = await auth();
+
     if (parts.length === 1) {
         try {
-            return { type: "profile", data: await getProfile(parts[0]) };
+            const data = await getProfile(parts[0]);
+            if (session?.user?.id) {
+                await recordSearch(session.user.id, parts[0], "profile");
+            }
+            return { type: "profile", data };
         } catch (e: any) {
             return { error: `User not found: ${e.message ?? e}` };
         }
@@ -125,6 +148,9 @@ export async function fetchGitHubData(input: string) {
                 repo,
                 repoData.default_branch
             );
+            if (session?.user?.id) {
+                await recordSearch(session.user.id, input, "repo");
+            }
             return { type: "repo", data: repoData, fileTree: tree, hiddenFiles };
         } catch (e: any) {
             return { error: `Repository not found: ${e.message ?? e}` };
@@ -139,6 +165,10 @@ export async function fetchProfile(username: string) {
 
 export async function fetchPublicStats() {
     return getPublicStats();
+}
+
+export async function trackReportConversion(event: ReportConversionEvent, scanId?: string) {
+    await trackReportConversionEvent(event, scanId);
 }
 
 /**
@@ -232,7 +262,8 @@ export async function analyzeRepoFiles(
     query: string,
     filePaths: string[],
     owner?: string,
-    repo?: string
+    repo?: string,
+    modelPreference: ModelPreference = "flash"
 ): Promise<{ relevantFiles: string[]; fileCount: number }> {
     // Delegate file-selection step only — the pipeline handles full execution
     const fakeParams: RepoQueryParams = {
@@ -240,7 +271,8 @@ export async function analyzeRepoFiles(
         owner: owner ?? "",
         repo: repo ?? "",
         filePaths,
-    };
+        modelPreference,
+    } as any;
 
     // For backwards compatibility (some callers only want the file list),
     // we run the selection step directly from gemini rather than the full pipeline
@@ -249,7 +281,7 @@ export async function analyzeRepoFiles(
     const pruned = filePaths.filter(
         (p) => !SKIP.test(p) && !p.includes("node_modules/") && !p.includes(".git/")
     );
-    const relevantFiles = await analyzeFileSelection(query, pruned, owner, repo);
+    const relevantFiles = await analyzeFileSelection(query, pruned, owner, repo, modelPreference);
     return { relevantFiles, fileCount: relevantFiles.length };
 }
 
@@ -337,8 +369,15 @@ export async function* processProfileQueryStream(
     profileContext: ProfileQueryInput,
     modelPreference: ModelPreference = "flash"
 ): AsyncGenerator<StreamUpdate> {
+    const isThinking = modelPreference === "thinking";
     try {
-        yield { type: "status", message: "Loading profile data...", progress: 20 };
+        yield {
+            type: "status",
+            message: isThinking
+                ? `Reasoning: Analyzing ${profileContext.username}'s GitHub profile and repository data...`
+                : "Loading profile data...",
+            progress: 20
+        };
 
         const context = await buildFullProfileContext(
             profileContext,
@@ -346,7 +385,13 @@ export async function* processProfileQueryStream(
             (msg) => { /* progress updates are fire-and-forget in this path */ }
         );
 
-        yield { type: "status", message: "Thinking & checking real-time data...", progress: 75 };
+        yield {
+            type: "status",
+            message: isThinking
+                ? `Process: Formulating insights based on profile, repositories, and your query — "${query.slice(0, 60)}${query.length > 60 ? '...' : ''}"...`
+                : "Thinking & checking real-time data...",
+            progress: 75
+        };
 
         const ctx = toProfileContext(profileContext.profile);
         const stream = answerWithContextStream(
@@ -359,7 +404,7 @@ export async function* processProfileQueryStream(
         );
 
         for await (const chunk of stream) {
-            yield { type: "content", text: chunk, append: true };
+            yield mapProfileStreamChunk(chunk);
         }
 
         yield { type: "complete", relevantFiles: [] };
@@ -391,13 +436,37 @@ export async function scanRepositoryVulnerabilities(
     summary: ScanSummary & { debug?: Record<string, number> };
     grouped: Record<string, SecurityFinding[]>;
     meta: { depth: "quick" | "deep"; aiEnabled: boolean; maxFiles: number; aiFilesSelected: number; durationMs: number };
+    scanId?: string;
 }> {
     const config = buildScanConfig(options);
     const filePaths = files.map(f => f.path);
 
-    // Check cache first using a unique query string identifier
+    const session = await auth();
+    let limitKey = "";
+
+    if (config.depth === "deep") {
+        if (!session?.user?.id) {
+            throw new Error("Authentication required for Deep Scan.");
+        }
+        const now = new Date();
+        const monthKey = `${now.getFullYear()}_${now.getMonth() + 1}`;
+        limitKey = `user:${session.user.id}:deep_scans:${monthKey}`;
+
+        const currentScans = await kv.get<number>(limitKey) || 0;
+        if (currentScans >= 5) {
+            throw new Error("Monthly Deep Scan limit reached (5/5).");
+        }
+    }
+
+    // Check cache first using commit-aware keying
     const cacheKey = `security_scan_${config.depth}_${config.aiEnabled}`;
-    const cachedResult = await getCachedRepoQueryAnswer(owner, repo, cacheKey, filePaths) as any;
+    let revision = "unknown";
+    try {
+        revision = await getDefaultBranchHeadSha(owner, repo);
+    } catch (e) {
+        console.warn(`Failed to resolve latest default-branch SHA for ${owner}/${repo}; using fallback revision key.`);
+    }
+    const cachedResult = await getCachedSecurityScanResult(owner, repo, cacheKey, filePaths, revision) as any;
 
     if (cachedResult) {
         console.log(`🧠 AI Response Cache Hit for Security Scan: ${owner}/${repo}`);
@@ -406,10 +475,51 @@ export async function scanRepositoryVulnerabilities(
 
     const result = await runSecurityScan(owner, repo, files, config);
 
-    // Cache the full result object for 24 hours
-    await cacheRepoQueryAnswer(owner, repo, cacheKey, filePaths, result);
+    // Cache the full result object for 1 hour, keyed by current default-branch head SHA
+    await cacheSecurityScanResult(owner, repo, cacheKey, filePaths, revision, result);
 
-    return result;
+    if (config.depth === "deep" && limitKey) {
+        await kv.incr(limitKey);
+        // Expire key after 32 days to clean up
+        await kv.expire(limitKey, 32 * 24 * 60 * 60);
+    }
+
+    let scanId: string | undefined;
+    try {
+        const session = await auth();
+        scanId = await saveScanResult(owner, repo, {
+            depth: result.meta.depth,
+            summary: result.summary,
+            findings: result.findings,
+        }, session?.user?.id);
+    } catch (e) {
+        console.warn("Failed to save scan to KV:", e);
+    }
+
+    return {
+        ...result,
+        scanId,
+    };
+}
+
+export async function getRemainingDeepScans(): Promise<{ used: number; total: number; resetsAt: string }> {
+    const session = await auth();
+    const total = 5;
+    const now = new Date();
+    // Default to end of current month
+    const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    const resetsAt = nextMonth.toISOString();
+
+    if (!session?.user?.id) {
+        return { used: 0, total, resetsAt };
+    }
+
+    const monthKey = `${now.getFullYear()}_${now.getMonth() + 1}`;
+    const limitKey = `user:${session.user.id}:deep_scans:${monthKey}`;
+
+    const currentScans = await kv.get<number>(limitKey) || 0;
+
+    return { used: currentScans, total, resetsAt };
 }
 
 export async function generateSecurityPatchForFinding(
@@ -444,4 +554,10 @@ export async function searchRepositoryCode(
     type: "text" | "regex" | "ast" = "text"
 ): Promise<SearchResult[]> {
     return _searchRepositoryCode(owner, repo, files, query, type);
+}
+
+export async function getRecentSearches() {
+    const session = await auth();
+    if (!session?.user?.id) return [];
+    return _getRecentSearches(session.user.id);
 }

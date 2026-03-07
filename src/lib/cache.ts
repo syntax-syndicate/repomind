@@ -10,6 +10,13 @@ import { gzipSync, gunzipSync } from "node:zlib";
 const TTL_FILE = 3600; // 1 hour
 const TTL_REPO = 900; // 15 minutes
 const TTL_PROFILE = 1800; // 30 minutes
+const TTL_SCAN = 3600; // 1 hour
+
+interface RepoFullContextCachePayload {
+    metadata: unknown;
+    languages: unknown;
+    readme: string | null;
+}
 
 // Helper to handle KV errors gracefully
 async function safeKvOperation<T>(operation: () => Promise<T>): Promise<T | null> {
@@ -46,7 +53,7 @@ export async function cacheFile(
         // Store as base64 with prefix to identify compressed content
         const value = `gz:${compressed.toString('base64')}`;
         await safeKvOperation(() => kv.setex(key, TTL_FILE, value));
-    } catch (e) {
+    } catch {
         console.warn("Failed to compress/cache file:", path);
         // Fallback: don't cache or cache uncompressed if small enough?
         // Let's just skip caching on error to be safe
@@ -74,7 +81,7 @@ export async function getCachedFile(
         try {
             const buffer = Buffer.from(cached.slice(3), 'base64');
             return gunzipSync(buffer).toString();
-        } catch (e) {
+        } catch {
             console.error("Failed to decompress cached file:", path);
             return null;
         }
@@ -84,12 +91,42 @@ export async function getCachedFile(
 }
 
 /**
+ * Get multiple cached files in a single KV round-trip
+ */
+export async function getCachedFilesBatch(
+    owner: string,
+    repo: string,
+    files: Array<{ path: string; sha: string }>
+): Promise<Array<string | null>> {
+    if (files.length === 0) return [];
+
+    const keys = files.map(f => `file:${owner}/${repo}:${f.path}:${f.sha}`);
+    const results = await safeKvOperation(() => kv.mget<string[]>(keys));
+
+    if (!results) return files.map(() => null);
+
+    return results.map((cached, i) => {
+        if (!cached) return null;
+        if (typeof cached === 'string' && cached.startsWith('gz:')) {
+            try {
+                const buffer = Buffer.from(cached.slice(3), 'base64');
+                return gunzipSync(buffer).toString();
+            } catch {
+                console.error("Failed to decompress cached file:", files[i].path);
+                return null;
+            }
+        }
+        return typeof cached === 'string' ? cached : JSON.stringify(cached);
+    });
+}
+
+/**
  * Cache repository metadata
  */
 export async function cacheRepoMetadata(
     owner: string,
     repo: string,
-    data: any,
+    data: unknown,
     ttl: number = TTL_REPO
 ): Promise<void> {
     const key = `repo:${owner}/${repo}`;
@@ -102,9 +139,9 @@ export async function cacheRepoMetadata(
 export async function getCachedRepoMetadata(
     owner: string,
     repo: string
-): Promise<any | null> {
+): Promise<unknown | null> {
     const key = `repo:${owner}/${repo}`;
-    return await safeKvOperation(() => kv.get<any>(key));
+    return await safeKvOperation(() => kv.get<unknown>(key));
 }
 
 /**
@@ -114,11 +151,7 @@ export async function getCachedRepoMetadata(
 export async function cacheRepoFullContext(
     owner: string,
     repo: string,
-    context: {
-        metadata: any;
-        languages: any;
-        readme: string | null;
-    }
+    context: RepoFullContextCachePayload
 ): Promise<void> {
     const key = `repo:full:${owner}/${repo}`;
     // Compress readme if it exists to keep payload reasonable
@@ -137,15 +170,15 @@ export async function cacheRepoFullContext(
 export async function getCachedRepoFullContext(
     owner: string,
     repo: string
-): Promise<any | null> {
+): Promise<RepoFullContextCachePayload | null> {
     const key = `repo:full:${owner}/${repo}`;
-    const cached = await safeKvOperation(() => kv.get<any>(key));
+    const cached = await safeKvOperation(() => kv.get<RepoFullContextCachePayload>(key));
 
     if (cached && cached.readme && typeof cached.readme === 'string' && cached.readme.startsWith('gz:')) {
         try {
             const buffer = Buffer.from(cached.readme.slice(3), 'base64');
             cached.readme = gunzipSync(buffer).toString();
-        } catch (e) {
+        } catch {
             console.error("Failed to decompress Mega-Key readme for", repo);
             cached.readme = null;
         }
@@ -159,7 +192,7 @@ export async function getCachedRepoFullContext(
  */
 export async function cacheProfileData(
     username: string,
-    data: any,
+    data: unknown,
     ttl: number = TTL_PROFILE
 ): Promise<void> {
     const key = `profile:${username}`;
@@ -169,9 +202,9 @@ export async function cacheProfileData(
 /**
  * Get cached profile data
  */
-export async function getCachedProfileData(username: string): Promise<any | null> {
+export async function getCachedProfileData(username: string): Promise<unknown | null> {
     const key = `profile:${username}`;
-    return await safeKvOperation(() => kv.get<any>(key));
+    return await safeKvOperation(() => kv.get<unknown>(key));
 }
 
 /**
@@ -181,7 +214,7 @@ export async function cacheFileTree(
     owner: string,
     repo: string,
     branch: string,
-    tree: any[]
+    tree: unknown[]
 ): Promise<void> {
     const key = `tree:${owner}/${repo}:${branch}`;
     await safeKvOperation(() => kv.setex(key, TTL_REPO, tree));
@@ -191,9 +224,9 @@ export async function getCachedFileTree(
     owner: string,
     repo: string,
     branch: string
-): Promise<any[] | null> {
+): Promise<unknown[] | null> {
     const key = `tree:${owner}/${repo}:${branch}`;
-    return await safeKvOperation(() => kv.get<any[]>(key));
+    return await safeKvOperation(() => kv.get<unknown[]>(key));
 }
 
 /**
@@ -232,7 +265,7 @@ export async function cacheRepoQueryAnswer(
     repo: string,
     query: string,
     files: string[],
-    answer: any
+    answer: unknown
 ): Promise<void> {
     // We hash the file list to ensure if files change, cache invalidates.
     // A simple join is sufficient for our keys since they are relative paths.
@@ -246,11 +279,18 @@ export async function cacheRepoQueryAnswer(
         const stringified = typeof answer === 'string' ? answer : JSON.stringify(answer);
         const compressed = gzipSync(Buffer.from(stringified));
         const value = `gz:${compressed.toString('base64')}`;
-        await safeKvOperation(() => kv.setex(key, 86400, value));
-    } catch (e) {
+        // Store both the specific (hashed) and latest answer
+        await Promise.all([
+            safeKvOperation(() => kv.setex(key, 86400, value)),
+            safeKvOperation(() => kv.setex(`latest_answer:${owner}/${repo}:${normalizedQuery}`, 86400, value))
+        ]);
+    } catch {
         console.warn("Failed to compress answer, caching plain text...");
         const stringified = typeof answer === 'string' ? answer : JSON.stringify(answer);
-        await safeKvOperation(() => kv.setex(key, 86400, stringified));
+        await Promise.all([
+            safeKvOperation(() => kv.setex(key, 86400, stringified)),
+            safeKvOperation(() => kv.setex(`latest_answer:${owner}/${repo}:${normalizedQuery}`, 86400, stringified))
+        ]);
     }
 }
 
@@ -259,7 +299,7 @@ export async function getCachedRepoQueryAnswer(
     repo: string,
     query: string,
     files: string[]
-): Promise<any | null> {
+): Promise<unknown | null> {
     const fileHash = files.sort().join('|').substring(0, 100);
     const normalizedQuery = query.toLowerCase().trim();
     const key = `answer:${owner}/${repo}:${normalizedQuery}:${fileHash}`;
@@ -272,7 +312,7 @@ export async function getCachedRepoQueryAnswer(
         try {
             const buffer = Buffer.from(cached.slice(3), 'base64');
             resultString = gunzipSync(buffer).toString();
-        } catch (e) {
+        } catch {
             console.error("Failed to decompress cached answer");
             return null;
         }
@@ -280,7 +320,115 @@ export async function getCachedRepoQueryAnswer(
 
     try {
         return JSON.parse(resultString);
-    } catch (e) {
+    } catch {
+        return resultString;
+    }
+}
+
+/**
+ * Short-circuit check for query answer.
+ * Checks if there's any answer for this query, ignoring file selection hash.
+ * This is faster but potentially slightly less accurate if the codebase changed recently.
+ */
+export async function getLatestRepoQueryAnswer(
+    owner: string,
+    repo: string,
+    query: string
+): Promise<unknown | null> {
+    const normalizedQuery = query.toLowerCase().trim();
+    const key = `latest_answer:${owner}/${repo}:${normalizedQuery}`;
+
+    const cached = await safeKvOperation(() => kv.get<string>(key));
+    if (!cached) return null;
+
+    let resultString = cached;
+    if (cached.startsWith('gz:')) {
+        try {
+            const buffer = Buffer.from(cached.slice(3), 'base64');
+            resultString = gunzipSync(buffer).toString();
+        } catch {
+            return null;
+        }
+    }
+
+    try {
+        return JSON.parse(resultString);
+    } catch {
+        return resultString;
+    }
+}
+
+function buildScanFileHash(files: string[]): string {
+    return [...files].sort().join("|").substring(0, 100);
+}
+
+function buildSecurityScanCacheKey(
+    owner: string,
+    repo: string,
+    scanKey: string,
+    files: string[],
+    revision: string
+): string {
+    const normalizedScanKey = scanKey.toLowerCase().trim();
+    const fileHash = buildScanFileHash(files);
+    const normalizedRevision = revision.trim() || "unknown";
+    return `scan_answer:${owner}/${repo}:${normalizedScanKey}:${normalizedRevision}:${fileHash}`;
+}
+
+/**
+ * Cache security scan result with commit-aware keying.
+ * Scan cache TTL is intentionally short (1h).
+ */
+export async function cacheSecurityScanResult(
+    owner: string,
+    repo: string,
+    scanKey: string,
+    files: string[],
+    revision: string,
+    result: unknown
+): Promise<void> {
+    const key = buildSecurityScanCacheKey(owner, repo, scanKey, files, revision);
+
+    try {
+        const stringified = typeof result === "string" ? result : JSON.stringify(result);
+        const compressed = gzipSync(Buffer.from(stringified));
+        const value = `gz:${compressed.toString("base64")}`;
+        await safeKvOperation(() => kv.setex(key, TTL_SCAN, value));
+    } catch {
+        console.warn("Failed to compress security scan result, caching plain text...");
+        const stringified = typeof result === "string" ? result : JSON.stringify(result);
+        await safeKvOperation(() => kv.setex(key, TTL_SCAN, stringified));
+    }
+}
+
+/**
+ * Get security scan result from commit-aware cache.
+ */
+export async function getCachedSecurityScanResult(
+    owner: string,
+    repo: string,
+    scanKey: string,
+    files: string[],
+    revision: string
+): Promise<unknown | null> {
+    const key = buildSecurityScanCacheKey(owner, repo, scanKey, files, revision);
+    const cached = await safeKvOperation(() => kv.get<string>(key));
+    if (!cached) return null;
+
+    let resultString = cached;
+    if (cached.startsWith("gz:")) {
+        try {
+            const buffer = Buffer.from(cached.slice(3), "base64");
+            resultString = gunzipSync(buffer).toString();
+        } catch {
+            console.error("Failed to decompress cached security scan result");
+            return null;
+        }
+    }
+
+    try {
+        return JSON.parse(resultString);
+    } catch {
         return resultString;
     }
 }
@@ -311,7 +459,7 @@ export async function getCacheStats(): Promise<{
         // Simple health check
         await kv.ping();
         return { available: true };
-    } catch (error) {
+    } catch {
         return { available: false };
     }
 }

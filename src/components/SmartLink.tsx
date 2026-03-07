@@ -8,9 +8,11 @@ import { Loader2 } from "lucide-react";
 
 interface SmartLinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
     href?: string;
+    currentOwner?: string;
+    currentRepo?: string;
 }
 
-export function SmartLink({ href, children, ...props }: SmartLinkProps) {
+export function SmartLink({ href, children, currentOwner, currentRepo, ...props }: SmartLinkProps) {
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(false);
@@ -32,7 +34,16 @@ export function SmartLink({ href, children, ...props }: SmartLinkProps) {
             const username = match[1];
             const repo = match[3];
 
+            // Normalize for comparison
+            const isSameUser = currentOwner?.toLowerCase() === username.toLowerCase();
+            const isSameRepo = isSameUser && repo && currentRepo?.toLowerCase() === repo.toLowerCase();
+
             if (repo) {
+                // If it's the current repo, don't auto-expand to a card
+                if (isSameRepo) {
+                    setType("link");
+                    return;
+                }
                 // It's a repo
                 setType("repo");
                 setLoading(true);
@@ -46,6 +57,13 @@ export function SmartLink({ href, children, ...props }: SmartLinkProps) {
                     })
                     .finally(() => setLoading(false));
             } else {
+                // If it's the current profile, don't auto-expand to a card
+                if (isSameUser && !currentRepo) {
+                    // Only skip if we are in profile chat (indicated by lack of currentRepo)
+                    // or if explicitly on that profile page.
+                    setType("link");
+                    return;
+                }
                 // It's a profile
                 setType("profile");
                 setLoading(true);

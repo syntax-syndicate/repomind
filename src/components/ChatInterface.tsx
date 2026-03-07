@@ -1,188 +1,68 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Send, Loader2, FileCode, ChevronRight, ArrowLeft, Sparkles, Github, Menu, MessageCircle, Shield, AlertTriangle, Download, CheckCircle, Info, Trash2, X, GitFork } from "lucide-react";
+import { FileCode, ChevronRight, ArrowLeft, Sparkles, Github, Menu, MessageCircle, Shield, Download, Trash2, X, GitFork } from "lucide-react";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
 import { BotIcon } from "@/components/icons/BotIcon";
 import { UserIcon } from "@/components/icons/UserIcon";
 import { CopySquaresIcon } from "@/components/icons/CopySquaresIcon";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { analyzeRepoFiles, fetchRepoFiles, generateAnswer, scanRepositoryVulnerabilities, fetchProfile } from "@/app/actions";
+
+import { scanRepositoryVulnerabilities, fetchProfile, getRemainingDeepScans } from "@/app/actions";
 import { cn } from "@/lib/utils";
-import mermaid from "mermaid";
-import html2canvas from "html2canvas-pro";
-import { EnhancedMarkdown } from "./EnhancedMarkdown";
 import { countMessageTokens, formatTokenCount, getTokenWarningLevel, isRateLimitError, getRateLimitErrorMessage, MAX_TOKENS } from "@/lib/tokens";
-import { validateMermaidSyntax, sanitizeMermaidCode, getFallbackTemplate, generateMermaidFromJSON } from "@/lib/diagram-utils";
 import { saveConversation, loadConversation, clearConversation } from "@/lib/storage";
-import { exportChatToMarkdownFile, convertChartsToImages } from "@/lib/chat-export";
-import { renderMarkdownToHtml } from "@/lib/clipboard-utils";
+import {
+    ARCHITECTURE_PROMPT,
+    COPY_FEEDBACK_MS,
+    DEEP_SCAN_PROMPT,
+    INITIAL_PROMPT_DELAY_MS,
+    MAX_FINDINGS_PREVIEW,
+    QUICK_SCAN_PROMPT,
+} from "@/lib/chat-constants";
+import { copyChatMessageContent, exportChatMessages } from "@/lib/chat-message-actions";
+import { parseStreamChunk } from "@/lib/streaming-parser";
+import { shouldShowRepoSuggestions } from "@/lib/chat-ui";
+
 import { SearchModal } from "./SearchModal";
 import { ConfirmDialog } from "./ConfirmDialog";
-import { CodeBlock } from "./CodeBlock";
 import { ChatInput } from "./ChatInput";
-import Link from "next/link";
-import { StreamingProgress } from "./StreamingProgress";
-import type { StreamUpdate } from "@/lib/streaming-types";
-import { CopyBadge } from "./CopyBadge";
+import { LoginModal } from "./LoginModal";
+import { ReasoningBlock } from "./ReasoningBlock";
 import type { ModelPreference } from "@/lib/ai-client";
-import { Brain, Zap } from "lucide-react";
+import type { RepoChatMessage } from "@/lib/chat-types";
 
-// Initialize mermaid
-mermaid.initialize({
-    startOnLoad: false,
-    theme: 'base',
-    securityLevel: 'strict', // Prevent XSS attacks by enabling HTML sanitization
-    themeVariables: {
-        primaryColor: '#18181b', // zinc-900
-        primaryTextColor: '#e4e4e7', // zinc-200
-        primaryBorderColor: '#3f3f46', // zinc-700
-        lineColor: '#a1a1aa', // zinc-400
-        secondaryColor: '#27272a', // zinc-800
-        tertiaryColor: '#27272a', // zinc-800
-        fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-    }
-});
-
-import { Mermaid } from "./Mermaid";
-
-// ... (imports remain the same, remove local Mermaid definition)
-
-import { repairMarkdown } from "@/lib/markdown-utils";
-
-// ... (imports)
-
-// Extract MessageContent to a memoized component
-const MessageContent = ({ content, messageId }: { content: string, messageId: string }) => {
-    const repairedContent = useMemo(() => repairMarkdown(content), [content]);
-
-    // Use a ref to allow recursive reference to components
-    const componentsRef = useRef<any>(null);
-
-    const components = useMemo(() => {
-        const comps = {
-            code: ({ className, children, inline, ...props }: any) => {
-                const match = /language-(\w+)/.exec(className || "");
-                const isMermaid = match && match[1] === "mermaid";
-                const isMermaidJson = match && match[1] === "mermaid-json";
-
-                if (isMermaid) {
-                    return <Mermaid key={messageId} chart={String(children).replace(/\n$/, "")} />;
-                }
-
-                if (isMermaidJson) {
-                    try {
-                        const jsonContent = String(children).replace(/\n$/, "");
-                        const data = JSON.parse(jsonContent);
-                        const chart = generateMermaidFromJSON(data);
-                        return <Mermaid key={messageId} chart={chart} />;
-                    } catch (e) {
-                        return (
-                            <div className="flex items-center gap-2 p-4 bg-zinc-900/50 rounded-lg border border-white/10">
-                                <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
-                                <span className="text-zinc-400 text-sm">Generating diagram...</span>
-                            </div>
-                        );
-                    }
-                }
-
-                const contentStr = String(children);
-                const isBlock = contentStr.endsWith('\n');
-                const shouldRenderBlock = match || isBlock || (inline === false);
-
-                return shouldRenderBlock ? (
-                    <CodeBlock
-                        language={match ? match[1] : "markdown"}
-                        value={contentStr.replace(/\n$/, "")}
-                        components={componentsRef.current}
-                    />
-                ) : (
-                    <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-red-400 font-mono text-sm" {...props}>
-                        {children}
-                    </code>
-                );
-            },
-            p: ({ children }: any) => <div className="mb-4 leading-relaxed last:mb-0">{children}</div>,
-            pre: ({ children }: any) => <>{children}</>,
-            table: ({ children }: any) => (
-                <div className="overflow-x-auto my-4">
-                    <table className="min-w-full border-collapse border border-zinc-700">
-                        {children}
-                    </table>
-                </div>
-            ),
-            thead: ({ children }: any) => (
-                <thead className="bg-zinc-800">{children}</thead>
-            ),
-            tbody: ({ children }: any) => (
-                <tbody className="bg-zinc-900/50">{children}</tbody>
-            ),
-            tr: ({ children }: any) => (
-                <tr className="border-b border-zinc-700">{children}</tr>
-            ),
-            th: ({ children }: any) => (
-                <th className="px-4 py-2 text-left text-sm font-semibold text-white border border-zinc-700">
-                    {children}
-                </th>
-            ),
-            td: ({ children }: any) => (
-                <td className="px-4 py-2 text-sm text-zinc-300 border border-zinc-700">
-                    {children}
-                </td>
-            ),
-        };
-        componentsRef.current = comps;
-        return comps;
-    }, [messageId]);
-
-    return (
-        <EnhancedMarkdown
-            content={repairedContent}
-            components={components}
-        />
-    );
-};
-
-// ... (rest of the file)
-
-// In the render loop:
-// <div className="prose prose-invert prose-sm max-w-none leading-relaxed break-words overflow-hidden w-full min-w-0">
-//     <MessageContent content={msg.content} messageId={msg.id} />
-// </div>
+import { MessageContent } from "./chat/MessageContent";
+import { useMessageSelection } from "./chat/useMessageSelection";
+import { BadgeModal } from "./chat/BadgeModal";
+import { SecurityScanModal } from "./chat/SecurityScanModal";
 
 const REPO_SUGGESTIONS = [
     "Show me the user flow chart",
-    "Find security vulnerabilities",
+    QUICK_SCAN_PROMPT,
     "Evaluate code quality",
     "What's the tech stack?",
-    "Explain the architecture",
+    ARCHITECTURE_PROMPT,
 ];
 
-interface Vulnerability {
-    title: string;
-    severity: string;
-    description: string;
-    file: string;
-    line?: number;
-    recommendation: string;
+interface RepoFileNode {
+    path: string;
+    sha?: string;
 }
 
-interface Message {
-    id: string;
-    role: "user" | "model";
-    content: string;
-    relevantFiles?: string[];
-    tokenCount?: number;
-    vulnerabilities?: Vulnerability[];
-    isQuickSecurityScan?: boolean;
-}
+type OwnerProfile = Awaited<ReturnType<typeof fetchProfile>>;
 
 interface ChatInterfaceProps {
-    repoContext: { owner: string; repo: string; fileTree: any[] };
+    repoContext: { owner: string; repo: string; fileTree: RepoFileNode[] };
     onToggleSidebar?: () => void;
     initialPrompt?: string;
 }
 
+type SubmitMode = "normal" | "quick_scan" | "deep_scan";
+
 export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: ChatInterfaceProps) {
-    const [messages, setMessages] = useState<Message[]>([
+    const { data: session } = useSession();
+    const [messages, setMessages] = useState<RepoChatMessage[]>([
         {
             id: "welcome",
             role: "model",
@@ -195,22 +75,34 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
     const [scanning, setScanning] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatScrollRef = useRef<HTMLDivElement>(null);
+    const {
+        selectionAnchor,
+        referenceText,
+        handleSelection,
+        handleAskFromSelection,
+        clearReference,
+    } = useMessageSelection(chatScrollRef);
+
     const [initialized, setInitialized] = useState(false);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-    const [selectionText, setSelectionText] = useState("");
-    const [selectionAnchor, setSelectionAnchor] = useState<{ x: number; y: number } | null>(null);
-    const [referenceText, setReferenceText] = useState("");
     const [modelPreference, setModelPreference] = useState<ModelPreference>("flash");
 
-    // Streaming state
-    const [streamingStatus, setStreamingStatus] = useState<{ message: string; progress: number } | null>(null);
-    const [currentStreamingMessage, setCurrentStreamingMessage] = useState("");
-    const [ownerProfile, setOwnerProfile] = useState<any>(null);
+    const [ownerProfile, setOwnerProfile] = useState<OwnerProfile | null>(null);
     const [showBadgeModal, setShowBadgeModal] = useState(false);
     const [showSecurityModal, setShowSecurityModal] = useState(false);
+    const [showLoginModal, setShowLoginModal] = useState(false);
+    const [deepScansData, setDeepScansData] = useState<{ used: number; total: number; resetsAt: string } | null>(null);
 
-    const handleSubmitRef = useRef<any>(null);
+    const handleSubmitRef = useRef<((e?: React.FormEvent, overrideText?: string, submitMode?: SubmitMode) => Promise<void>) | null>(null);
+    const isSubmittingRef = useRef(false);
+
+    // Fetch deep scan limits on mount/session change
+    useEffect(() => {
+        if (session?.user) {
+            getRemainingDeepScans().then(setDeepScansData).catch(console.error);
+        }
+    }, [session?.user, showSecurityModal]);
 
     // Fetch owner profile on mount
     useEffect(() => {
@@ -230,43 +122,58 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
     const initialPromptHandled = useRef(false);
 
     useEffect(() => {
-        const saved = loadConversation(repoContext.owner, repoContext.repo);
-        if (saved && saved.length > 1) {
-            setMessages(saved);
-            setShowSuggestions(false);
-            if (!toastShownRef.current) {
-                toast.info('Conversation restored', { duration: 2000 });
-                toastShownRef.current = true;
-            }
-        }
-        setInitialized(true);
-
-        if (initialPrompt && !initialPromptHandled.current) {
-            initialPromptHandled.current = true;
-            let promptText = "";
-            if (initialPrompt === "architecture") promptText = "Explain the architecture";
-            else if (initialPrompt === "security") promptText = "Find security vulnerabilities";
-            else if (initialPrompt === "explain") promptText = "Explain the codebase";
-            else promptText = initialPrompt;
-
-            const url = new URL(window.location.href);
-            url.searchParams.delete('prompt');
-            window.history.replaceState({}, '', url.toString());
-
-            setTimeout(() => {
-                if (handleSubmitRef.current) {
-                    handleSubmitRef.current(undefined, promptText);
+        const fetchConversation = async () => {
+            const saved = await loadConversation(repoContext.owner, repoContext.repo, !!session);
+            if (saved && saved.length > 1) {
+                setMessages(saved);
+                setShowSuggestions(false);
+                if (!toastShownRef.current) {
+                    toast.info('Conversation restored', { duration: 2000 });
+                    toastShownRef.current = true;
                 }
-            }, 300);
-        }
-    }, [repoContext.owner, repoContext.repo, initialPrompt]);
+            }
+            setInitialized(true);
+
+            if (initialPrompt && !initialPromptHandled.current) {
+                initialPromptHandled.current = true;
+                let promptText = "";
+                if (initialPrompt === "architecture") promptText = ARCHITECTURE_PROMPT;
+                else if (initialPrompt === "security") promptText = QUICK_SCAN_PROMPT;
+                else if (initialPrompt === "explain") promptText = "Explain the codebase";
+                else promptText = initialPrompt;
+
+                const url = new URL(window.location.href);
+                url.searchParams.delete('prompt');
+                window.history.replaceState({}, '', url.toString());
+
+                setTimeout(() => {
+                    if (handleSubmitRef.current) {
+                        // If it's a specific finding fix, prepend context
+                        if (initialPrompt.includes("Help me fix this security vulnerability")) {
+                            setMessages(prev => [
+                                ...prev,
+                                {
+                                    id: "initial-fix-context",
+                                    role: "model",
+                                    content: `I'm ready to help you fix this vulnerability:\n\n${initialPrompt.split("\n").slice(1, 5).join("\n")}`,
+                                }
+                            ]);
+                        }
+                        handleSubmitRef.current(undefined, promptText);
+                    }
+                }, INITIAL_PROMPT_DELAY_MS);
+            }
+        };
+
+        fetchConversation();
+    }, [repoContext.owner, repoContext.repo, initialPrompt, session]);
 
     // Save on every message change
     useEffect(() => {
         if (initialized && messages.length > 1) {
-            saveConversation(repoContext.owner, repoContext.repo, messages);
+            saveConversation(repoContext.owner, repoContext.repo, messages, !!session);
         }
-    }, [messages, initialized, repoContext.owner, repoContext.repo]);
+    }, [messages, initialized, repoContext.owner, repoContext.repo, session]);
 
     // Calculate total token count
     const totalTokens = useMemo(() => {
@@ -274,6 +181,16 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
     }, [messages]);
 
     const tokenWarningLevel = getTokenWarningLevel(totalTokens);
+
+    useEffect(() => {
+        const nextShowSuggestions = shouldShowRepoSuggestions({
+            messagesCount: messages.length,
+            input,
+            loading,
+            scanning,
+        });
+        setShowSuggestions(nextShowSuggestions);
+    }, [messages.length, input, loading, scanning]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -284,14 +201,228 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
     }, [messages]);
 
     const handleSuggestionClick = (suggestion: string) => {
+        setInput(suggestion);
         setShowSuggestions(false);
-        handleSubmitRef.current?.(undefined, suggestion);
     };
 
-    const handleSubmit = async (e?: React.FormEvent, overrideText?: string) => {
+    const buildCombinedInput = (trimmedInput: string, selectedReferenceText: string) => {
+        return selectedReferenceText
+            ? `Reference:\n> ${selectedReferenceText.replace(/\n/g, "\n> ")}\n\n${trimmedInput || "Please continue."}`
+            : trimmedInput;
+    };
+
+    const isQuickSecurityScanPrompt = (text: string) => {
+        const normalized = text.toLowerCase();
+        return normalized.includes(QUICK_SCAN_PROMPT.toLowerCase()) || normalized.includes("scan for vulnerabilities");
+    };
+
+    const isDeepSecurityScanPrompt = (text: string) => {
+        const normalized = text.toLowerCase();
+        return normalized.includes(DEEP_SCAN_PROMPT.toLowerCase()) || normalized.includes("deep scan");
+    };
+
+    const runSecurityScanFlow = async (
+        isQuickScan: boolean,
+        isDeepScan: boolean,
+        placeholderMessageId: string
+    ) => {
+        console.log(`🎯 Security scan triggered! (Type: ${isDeepScan ? "Deep" : "Quick"})`);
+        setScanning(true);
+        try {
+            const filesToScan = repoContext.fileTree.map((file) => ({ path: file.path, sha: file.sha }));
+            const { findings, summary, scanId } = await scanRepositoryVulnerabilities(
+                repoContext.owner,
+                repoContext.repo,
+                filesToScan,
+                { depth: isDeepScan ? "deep" : "quick" }
+            );
+
+            let content = "";
+            if (summary.total === 0) {
+                content = `✅ **Security scan complete!**\n\nI've comprehensively scanned the **core repository files** and found **no security vulnerabilities**.\n\nYour code looks secure! The scan checked for:\n- SQL injection vulnerabilities\n- Cross-site scripting (XSS)\n- Unsafe child_process usage\n- Hardcoded secrets\n- Weak cryptographic algorithms\n- Command injection\n\nKeep up the good security practices! 🔒`;
+            } else {
+                content = `⚠️ **Security scan complete!**\n\nI've comprehensively scanned the **core repository files** and found **${summary.total} potential issue${summary.total !== 1 ? "s" : ""}**.\n\n`;
+
+                if (summary.critical > 0) content += `🔴 **${summary.critical} Critical**\n`;
+                if (summary.high > 0) content += `🟠 **${summary.high} High**\n`;
+                if (summary.medium > 0) content += `🟡 **${summary.medium} Medium**\n`;
+                if (summary.low > 0) content += `🔵 **${summary.low} Low**\n`;
+
+                content += `\nHere are the key findings:\n\n`;
+                findings.slice(0, MAX_FINDINGS_PREVIEW).forEach((f) => {
+                    content += `### ${f.title}\n`;
+                    content += `**Severity**: ${f.severity.toUpperCase()}\n`;
+                    content += `**File**: \`${f.file}\` ${f.line ? `(Line ${f.line})` : ""}\n`;
+                    content += `**Issue**: ${f.description}\n`;
+                    content += `**Fix**: ${f.recommendation}\n\n`;
+                });
+                if (findings.length > MAX_FINDINGS_PREVIEW) {
+                    const hiddenCount = findings.length - MAX_FINDINGS_PREVIEW;
+                    content += `*...and ${hiddenCount} more issue${hiddenCount !== 1 ? "s" : ""}.*`;
+                }
+            }
+
+            const modelMsg: RepoChatMessage = {
+                id: placeholderMessageId,
+                role: "model",
+                content,
+                vulnerabilities: findings,
+                isQuickSecurityScan: isQuickScan && !isDeepScan,
+                scanId,
+            };
+            setMessages((prev) => prev.map((message) =>
+                message.id === placeholderMessageId ? modelMsg : message
+            ));
+        } catch (error) {
+            console.error("Scan failed:", error);
+            toast.error("Security scan failed", {
+                description: error instanceof Error ? error.message : "An error occurred during scanning",
+            });
+
+            const errorMsg: RepoChatMessage = {
+                id: placeholderMessageId,
+                role: "model",
+                content: "I encountered an error while scanning for security vulnerabilities. Please try again.",
+            };
+            setMessages((prev) => prev.map((message) =>
+                message.id === placeholderMessageId ? errorMsg : message
+            ));
+        } finally {
+            setScanning(false);
+            setLoading(false);
+            isSubmittingRef.current = false;
+        }
+    };
+
+    const getRepoQueryForServer = (trimmedInput: string, combinedInput: string) => {
+        if (trimmedInput.toLowerCase() === ARCHITECTURE_PROMPT.toLowerCase()) {
+            return "Explain the architecture of this repository in detail. Provide a comprehensive overview of the core logic, framework setup, data flow, and key components based on the actual code, not just the README. Include a Mermaid diagram visualizing the architecture.";
+        }
+        return combinedInput;
+    };
+
+    const startRepoStreamMessage = (selectedModelPreference: ModelPreference) => {
+        const modelMsgId = (Date.now() + 1).toString();
+        setMessages((prev) => [...prev, {
+            id: modelMsgId,
+            role: "model",
+            content: "",
+            reasoningSteps: [],
+            relevantFiles: [],
+            modelUsed: selectedModelPreference,
+        }]);
+        return modelMsgId;
+    };
+
+    const runRepoStreamingFlow = async (modelMsgId: string, combinedInputForServer: string) => {
+        const filePaths = repoContext.fileTree.map((file) => file.path);
+        const response = await fetch("/api/chat/repo", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                query: combinedInputForServer,
+                repoDetails: { owner: repoContext.owner, repo: repoContext.repo },
+                filePaths,
+                history: messages.map(m => ({ role: m.role, content: m.content })),
+                profileData: ownerProfile,
+                modelPreference,
+            }),
+        });
+
+        if (!response.ok || !response.body) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData?.error || "Failed to start analysis stream.");
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        const accumulatedReasoning: string[] = [];
+        let contentText = "";
+        let finalRelevantFiles: string[] = [];
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            const parsedChunk = parseStreamChunk(buffer, decoder.decode(value, { stream: true }));
+            buffer = parsedChunk.buffer;
+
+            for (const invalidLine of parsedChunk.invalidLines) {
+                console.warn("Stream parse error:", invalidLine);
+            }
+
+            for (const chunk of parsedChunk.updates) {
+                if (chunk.type === "status") {
+                    accumulatedReasoning.push(chunk.message);
+                    setMessages((prev) => prev.map((message) =>
+                        message.id === modelMsgId ? { ...message, reasoningSteps: [...accumulatedReasoning] } : message
+                    ));
+                } else if (chunk.type === "thought") {
+                    accumulatedReasoning.push(chunk.text);
+                    setMessages((prev) => prev.map((message) =>
+                        message.id === modelMsgId ? { ...message, reasoningSteps: [...accumulatedReasoning] } : message
+                    ));
+                } else if (chunk.type === "content") {
+                    if (!contentText && chunk.text) {
+                        contentText = chunk.text.trimStart();
+                    } else {
+                        contentText += chunk.text;
+                    }
+                    setMessages((prev) => prev.map((message) =>
+                        message.id === modelMsgId ? { ...message, content: contentText } : message
+                    ));
+                } else if (chunk.type === "files") {
+                    setMessages((prev) => prev.map((message) =>
+                        message.id === modelMsgId ? { ...message, relevantFiles: chunk.files } : message
+                    ));
+                } else if (chunk.type === "complete") {
+                    finalRelevantFiles = chunk.relevantFiles ?? [];
+                    setMessages((prev) => prev.map((message) =>
+                        message.id === modelMsgId ? { ...message, relevantFiles: finalRelevantFiles } : message
+                    ));
+                } else if (chunk.type === "error") {
+                    throw new Error(chunk.message);
+                }
+            }
+        }
+
+        if (buffer.trim()) {
+            const finalChunk = parseStreamChunk("", `${buffer}\n`);
+            for (const invalidLine of finalChunk.invalidLines) {
+                console.warn("Stream parse error:", invalidLine);
+            }
+            for (const chunk of finalChunk.updates) {
+                if (chunk.type === "content") {
+                    if (!contentText && chunk.text) {
+                        contentText = chunk.text.trimStart();
+                    } else {
+                        contentText += chunk.text;
+                    }
+                }
+            }
+        }
+
+        setMessages(prev => prev.map(m =>
+            m.id === modelMsgId ? { ...m, content: contentText } : m
+        ));
+    };
+
+    const handleSubmit = async (
+        e?: React.FormEvent,
+        overrideText?: string,
+        submitMode: SubmitMode = "normal"
+    ) => {
         if (e) e.preventDefault();
+
+        if (isSubmittingRef.current) return;
+        isSubmittingRef.current = true;
+
         const trimmedInput = overrideText || input.trim();
-        if ((!trimmedInput && !referenceText) || loading) return;
+        if ((!trimmedInput && !referenceText) || loading) {
+            isSubmittingRef.current = false;
+            return;
+        }
 
         // Check token limit
         if (totalTokens >= MAX_TOKENS) {
@@ -299,16 +430,15 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                 description: "Please clear the chat to start a new conversation.",
                 duration: 5000,
             });
+            isSubmittingRef.current = false;
             return;
         }
 
         setShowSuggestions(false);
 
-        const combinedInput = referenceText
-            ? `Reference:\n> ${referenceText.replace(/\n/g, "\n> ")}\n\n${trimmedInput || "Please continue."}`
-            : trimmedInput;
+        const combinedInput = buildCombinedInput(trimmedInput, referenceText);
 
-        const userMsg: Message = {
+        const userMsg: RepoChatMessage = {
             id: Date.now().toString(),
             role: "user",
             content: combinedInput,
@@ -316,160 +446,38 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
 
         setMessages((prev) => [...prev, userMsg]);
         setInput("");
-        setReferenceText("");
+        clearReference();
         setLoading(true);
 
-        // Handle special commands
-        const isQuickScan = trimmedInput.toLowerCase().includes("find security vulnerabilities") || trimmedInput.toLowerCase().includes("scan for vulnerabilities");
-        const isDeepScan = trimmedInput.toLowerCase().includes("run deep security scan") || trimmedInput.toLowerCase().includes("deep scan");
+        const isQuickScan = submitMode === "quick_scan" || isQuickSecurityScanPrompt(trimmedInput);
+        const isDeepScan = submitMode === "deep_scan" || isDeepSecurityScanPrompt(trimmedInput);
+
+        if (isDeepScan && !session) {
+            setShowLoginModal(true);
+            setLoading(false);
+            isSubmittingRef.current = false;
+            return;
+        }
 
         if (isQuickScan || isDeepScan) {
-            console.log(`🎯 Security scan triggered! (Type: ${isDeepScan ? 'Deep' : 'Quick'})`);
-            setScanning(true);
-            try {
-                // Step 1: Start scan
-                setStreamingStatus({ message: `Preparing ${isDeepScan ? 'deep ' : ''}security scan...`, progress: 10 });
-
-                const filesToScan = repoContext.fileTree.map((f: any) => ({ path: f.path, sha: f.sha }));
-                console.log('📋 Total files in tree:', filesToScan.length);
-
-                // Step 2: Show file count
-                const codeFileCount = filesToScan.filter((f: any) =>
-                    /\.(js|jsx|ts|tsx|py|java|php|rb|go|rs)$/i.test(f.path) || f.path === 'package.json'
-                ).length;
-                console.log('💻 Code files found:', codeFileCount);
-                setStreamingStatus({ message: `Scanning ${Math.min(codeFileCount, isDeepScan ? 60 : 20)} code files...`, progress: 30 });
-
-                // Step 3: Run scan
-                setStreamingStatus({ message: `${isDeepScan ? 'Deep' : 'Pattern-based'} analysis in progress...`, progress: 50 });
-                console.log('🚀 Calling scanRepositoryVulnerabilities...');
-
-                const { findings, summary } = await scanRepositoryVulnerabilities(
-                    repoContext.owner,
-                    repoContext.repo,
-                    filesToScan,
-                    { depth: isDeepScan ? 'deep' : 'quick' }
-                );
-
-                console.log('✅ Scan complete! Findings:', findings.length, 'Summary:', summary);
-                console.log('📊 Debug Info:', summary.debug);
-
-                // Step 4: Finalizing
-                setStreamingStatus({ message: "Analyzing results...", progress: 90 });
-
-
-
-                let content = '';
-
-                if (summary.total === 0) {
-                    // No vulnerabilities found
-                    const filesScanned = summary.debug?.filesSuccessfullyFetched || 0;
-                    content = `✅ **Security scan complete!**\n\nI've scanned **${filesScanned} files** and found **no security vulnerabilities**.\n\nYour code looks secure! The scan checked for:\n- SQL injection vulnerabilities\n- Cross-site scripting (XSS)\n- Unsafe child_process usage\n- Hardcoded secrets\n- Weak cryptographic algorithms\n- Command injection\n\nKeep up the good security practices! 🔒`;
-                } else {
-                    // Vulnerabilities found
-                    const filesScanned = summary.debug?.filesSuccessfullyFetched || 0;
-                    content = `⚠️ **Security scan complete!**\n\nI've scanned **${filesScanned} files** and found **${summary.total} potential issue${summary.total !== 1 ? 's' : ''}**.\n\n`;
-
-                    if (summary.critical > 0) content += `🔴 **${summary.critical} Critical**\n`;
-                    if (summary.high > 0) content += `🟠 **${summary.high} High**\n`;
-                    if (summary.medium > 0) content += `🟡 **${summary.medium} Medium**\n`;
-                    if (summary.low > 0) content += `🔵 **${summary.low} Low**\n`;
-
-                    content += `\nHere are the key findings:\n\n`;
-
-                    findings.slice(0, 5).forEach(f => {
-                        content += `### ${f.title}\n`;
-                        content += `**Severity**: ${f.severity.toUpperCase()}\n`;
-                        content += `**File**: \`${f.file}\` ${f.line ? `(Line ${f.line})` : ''}\n`;
-                        content += `**Issue**: ${f.description}\n`;
-                        content += `**Fix**: ${f.recommendation}\n\n`;
-                    });
-
-                    if (findings.length > 5) {
-                        content += `*...and ${findings.length - 5} more issue${findings.length - 5 !== 1 ? 's' : ''}.*`;
-                    }
-                }
-
-
-                const modelMsg: Message = {
-                    id: (Date.now() + 1).toString(),
-                    role: "model",
-                    content: content,
-                    vulnerabilities: findings as any,
-                    isQuickSecurityScan: isQuickScan && !isDeepScan
-                };
-                setMessages((prev) => [...prev, modelMsg]);
-                setStreamingStatus(null); // Clear streaming status
-                setLoading(false);
-                setScanning(false);
-                return;
-            } catch (error) {
-                console.error("Scan failed:", error);
-                toast.error("Security scan failed", {
-                    description: error instanceof Error ? error.message : "An error occurred during scanning"
-                });
-                setStreamingStatus(null); // Clear streaming status
-                setScanning(false);
-                setLoading(false);
-
-                // Show error message to user
-                const errorMsg: Message = {
-                    id: (Date.now() + 1).toString(),
-                    role: "model",
-                    content: "I encountered an error while scanning for security vulnerabilities. Please try again.",
-                };
-                setMessages((prev) => [...prev, errorMsg]);
-                return; // Don't fall through to normal chat
-            }
+            const placeholderMessageId = `scan-${Date.now()}`;
+            const placeholderMsg: RepoChatMessage = {
+                id: placeholderMessageId,
+                role: "model",
+                content: "",
+                scanStatus: isDeepScan ? "deep_running" : "quick_running",
+            };
+            setMessages((prev) => [...prev, placeholderMsg]);
+            await runSecurityScanFlow(isQuickScan, isDeepScan, placeholderMessageId);
+            return;
         }
 
         try {
-            const filePaths = repoContext.fileTree.map((f: any) => f.path);
+            const combinedInputForServer = getRepoQueryForServer(trimmedInput, combinedInput);
+            const modelMsgId = startRepoStreamMessage(modelPreference);
+            await runRepoStreamingFlow(modelMsgId, combinedInputForServer);
+        } catch (error: unknown) {
 
-            // Step 1: Analyze files
-            setStreamingStatus({ message: "Selecting relevant files...", progress: 10 });
-            const { relevantFiles, fileCount } = await analyzeRepoFiles(input, filePaths, repoContext.owner, repoContext.repo);
-
-            // Step 2: Fetch files  
-            setStreamingStatus({ message: `Fetching ${fileCount} file${fileCount !== 1 ? 's' : ''} from GitHub...`, progress: 40 });
-
-            const filesToFetch = relevantFiles.map(path => {
-                const node = repoContext.fileTree.find((f: any) => f.path === path);
-                return { path, sha: node?.sha || "" };
-            });
-
-            const { context } = await fetchRepoFiles(repoContext.owner, repoContext.repo, filesToFetch);
-
-            // Step 3: Generate response
-            setStreamingStatus({ message: "Generating response...", progress: 70 });
-            // Get visitor ID
-            let visitorId = localStorage.getItem("visitor_id");
-            if (!visitorId) {
-                visitorId = crypto.randomUUID();
-                localStorage.setItem("visitor_id", visitorId);
-            }
-
-            const answer = await generateAnswer(
-                combinedInput,
-                context,
-                { owner: repoContext.owner, repo: repoContext.repo },
-                messages.map(m => ({ role: m.role, content: m.content })),
-                ownerProfile, // Pass profile data for developer cards
-                visitorId,
-                undefined, // filePaths is passed as undefined if executeRepoQuery fallback is used
-                modelPreference
-            );
-
-            const modelMsg: Message = {
-                id: (Date.now() + 1).toString(),
-                role: "model",
-                content: answer,
-                relevantFiles,
-            };
-
-            setMessages((prev) => [...prev, modelMsg]);
-            setStreamingStatus(null);
-        } catch (error: any) {
             console.error(error);
 
             // Check if it's a rate limit error
@@ -485,15 +493,15 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
             }
 
             // Show user-friendly error message
-            const errorMsg: Message = {
+            const errorMsg: RepoChatMessage = {
                 id: (Date.now() + 1).toString(),
                 role: "model",
                 content: "I encountered an error while analyzing the code. Please try again or rephrase your question.",
             };
             setMessages((prev) => [...prev, errorMsg]);
-            setStreamingStatus(null);
         } finally {
             setLoading(false);
+            isSubmittingRef.current = false;
         }
     };
 
@@ -501,64 +509,8 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
         handleSubmitRef.current = handleSubmit;
     });
 
-    const handleSelection = () => {
-        const selection = window.getSelection();
-        if (!selection || selection.isCollapsed) {
-            setSelectionAnchor(null);
-            setSelectionText("");
-            return;
-        }
-
-        const anchorNode = selection.anchorNode;
-        const focusNode = selection.focusNode;
-        const getModelContainer = (node: Node | null) => {
-            const element = node instanceof Element ? node : node?.parentElement;
-            return element?.closest('[data-message-role="model"]') || null;
-        };
-
-        const startContainer = getModelContainer(anchorNode);
-        const endContainer = getModelContainer(focusNode);
-        if (!startContainer || startContainer !== endContainer) {
-            setSelectionAnchor(null);
-            setSelectionText("");
-            return;
-        }
-
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-        const scrollContainer = chatScrollRef.current;
-        if (!scrollContainer) return;
-
-        const containerRect = scrollContainer.getBoundingClientRect();
-        const x = rect.left - containerRect.left + rect.width / 2;
-        const y = rect.top - containerRect.top + scrollContainer.scrollTop;
-        const text = selection.toString().trim();
-
-        if (!text) {
-            setSelectionAnchor(null);
-            setSelectionText("");
-            return;
-        }
-
-        setSelectionAnchor({ x, y });
-        setSelectionText(text);
-    };
-
-    const handleAskFromSelection = () => {
-        if (!selectionText) return;
-        setReferenceText(selectionText);
-        setSelectionAnchor(null);
-        setSelectionText("");
-        setInput((current) => current);
-        chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: "smooth" });
-    };
-
-    const clearReference = () => {
-        setReferenceText("");
-    };
-
-    const handleClearChat = () => {
-        clearConversation(repoContext.owner, repoContext.repo);
+    const handleClearChat = async () => {
+        await clearConversation(repoContext.owner, repoContext.repo, !!session);
         setMessages([
             {
                 id: "welcome",
@@ -570,49 +522,13 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
         toast.success("Chat history cleared");
     };
 
-    const handleCopyMessage = async (message: Message) => {
+    const handleCopyMessage = async (message: RepoChatMessage) => {
         try {
-            // Convert mermaid blocks to inline SVG data URIs before clipboard copy.
-            const markdown = await convertChartsToImages(message.content, {
-                renderMermaid: (code, id) => mermaid.render(id, code).then((out) => out.svg),
-                convertMermaidJson: (json) => {
-                    try {
-                        return generateMermaidFromJSON(JSON.parse(json));
-                    } catch {
-                        return null;
-                    }
-                },
-            });
-            // Render markdown to static HTML for rich clipboard paste into docs.
-            const html = renderMarkdownToHtml(markdown);
-            if ("ClipboardItem" in window && navigator.clipboard.write) {
-                try {
-                    // Prefer HTML + plain text for best compatibility.
-                    const item = new ClipboardItem({
-                        "text/html": new Blob([html], { type: "text/html" }),
-                        "text/plain": new Blob([markdown], { type: "text/plain" }),
-                    });
-                    await navigator.clipboard.write([item]);
-                } catch {
-                    try {
-                        // Fallback to markdown + plain text if HTML write is blocked.
-                        const item = new ClipboardItem({
-                            "text/markdown": new Blob([markdown], { type: "text/markdown" }),
-                            "text/plain": new Blob([markdown], { type: "text/plain" }),
-                        });
-                        await navigator.clipboard.write([item]);
-                    } catch {
-                        // Final fallback for browsers that only allow writeText.
-                        await navigator.clipboard.writeText(markdown);
-                    }
-                }
-            } else {
-                await navigator.clipboard.writeText(markdown);
-            }
+            await copyChatMessageContent(message.content);
             setCopiedMessageId(message.id);
             setTimeout(() => {
                 setCopiedMessageId((current) => (current === message.id ? null : current));
-            }, 1500);
+            }, COPY_FEEDBACK_MS);
             toast.success("Response copied");
         } catch {
             toast.error("Failed to copy response");
@@ -621,20 +537,26 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
 
     const handleExportChat = async () => {
         const contextLabel = `${repoContext.owner}/${repoContext.repo}`;
-        await exportChatToMarkdownFile({
+        await exportChatMessages({
             title: `${contextLabel} Chat Export`,
             contextLabel,
             messages,
-            renderMermaid: (code, id) => mermaid.render(id, code).then((out) => out.svg),
-            convertMermaidJson: (json) => {
-                try {
-                    return generateMermaidFromJSON(JSON.parse(json));
-                } catch {
-                    return null;
-                }
-            },
         });
         toast.success("Chat exported");
+    };
+
+    const handleRunQuickScanFromModal = () => {
+        setShowSecurityModal(false);
+        handleSubmitRef.current?.(undefined, QUICK_SCAN_PROMPT, "quick_scan");
+    };
+
+    const handleRunDeepScanFromModal = () => {
+        setShowSecurityModal(false);
+        if (!session) {
+            setShowLoginModal(true);
+            return;
+        }
+        handleSubmitRef.current?.(undefined, DEEP_SCAN_PROMPT, "deep_scan");
     };
 
     return (
@@ -693,7 +615,7 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                             </button>
                             <div className="w-px h-4 bg-white/10 mx-1" />
                             <button
-                                onClick={() => handleSubmit(undefined, "Explain the architecture")}
+                                onClick={() => handleSubmit(undefined, ARCHITECTURE_PROMPT)}
                                 disabled={loading || scanning}
                                 className="flex items-center gap-2 px-3 py-1.5 text-xs font-semibold text-blue-100 bg-blue-500/10 hover:bg-blue-500/20 rounded-lg transition-all border border-transparent hover:border-blue-500/30 disabled:opacity-50"
                             >
@@ -721,7 +643,7 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                                 <CopySquaresIcon className="w-4 h-4" />
                             </button>
                             <button
-                                onClick={() => handleSubmit(undefined, "Explain the architecture")}
+                                onClick={() => handleSubmit(undefined, ARCHITECTURE_PROMPT)}
                                 disabled={loading || scanning}
                                 className="p-1.5 text-blue-400 hover:bg-blue-500/10 rounded-lg transition-all hover:text-blue-300 disabled:opacity-50"
                                 title="Architecture Scan"
@@ -776,6 +698,18 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                 </div>
             </div>
 
+            {/* Fix Mode Banner */}
+            {initialPrompt?.includes("fix") && messages.some(m => m.id === "initial-fix-context") && (
+                <div className="bg-indigo-600/20 border-b border-indigo-500/30 px-4 py-2 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                        <Shield className="w-4 h-4 text-indigo-400 shrink-0" />
+                        <p className="text-xs text-indigo-100 truncate">
+                            Fixing: <span className="font-semibold">{messages.find(m => m.id === "initial-fix-context")?.content.split("\n")[1]?.split(": ")[1] || "Security Finding"}</span>
+                        </p>
+                    </div>
+                </div>
+            )}
+
             <div
                 ref={chatScrollRef}
                 onMouseUp={handleSelection}
@@ -791,123 +725,180 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                     </button>
                 )}
                 <AnimatePresence initial={false}>
-                    {messages.map((msg) => (
-                        <motion.div
-                            key={msg.id}
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={cn(
-                                "flex gap-4 max-w-3xl mx-auto",
-                                msg.role === "user" ? "flex-row-reverse" : "flex-row"
-                            )}
-                        >
-                            <div className={cn(
-                                "w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden"
-                            )}>
-                                {msg.role === "model" ? (
-                                    <BotIcon className="w-full h-full text-white" />
-                                ) : (
-                                    <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
-                                        <UserIcon className="w-full h-full text-zinc-400" />
-                                    </div>
-                                )}
-                            </div>
+                    {messages.map((msg) => {
+                        const isLatestMessage = msg.id === messages[messages.length - 1]?.id;
+                        const isStreamingScanPlaceholder =
+                            msg.role === "model" &&
+                            Boolean(msg.scanStatus) &&
+                            loading &&
+                            scanning &&
+                            isLatestMessage;
 
-                            <div className={cn(
-                                "flex flex-col gap-2",
-                                msg.role === "user" ? "items-end max-w-[85%] md:max-w-[80%]" : "items-start max-w-full md:max-w-full w-full min-w-0"
-                            )}>
-                                <div className={cn(
-                                    "relative p-4 rounded-2xl overflow-hidden w-full min-w-0",
-                                    msg.role === "user"
-                                        ? "bg-blue-600 text-white rounded-tr-none"
-                                        : "bg-zinc-900 border border-white/10 rounded-tl-none"
+                        return (
+                            <motion.div
+                                key={msg.id}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className={cn(
+                                    "flex gap-4 max-w-3xl mx-auto",
+                                    msg.role === "user" ? "flex-row-reverse" : "flex-row"
                                 )}
-                                    data-message-role={msg.role}
-                                >
-                                    {msg.role === "model" && (
-                                        <button
-                                            onClick={() => handleCopyMessage(msg)}
-                                            className="absolute top-2 right-2 p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-md transition-colors"
-                                            title="Copy response"
-                                        >
-                                            <CopySquaresIcon
-                                                className={cn(
-                                                    "w-4 h-4",
-                                                    copiedMessageId === msg.id && "text-emerald-400"
-                                                )}
-                                            />
-                                        </button>
+                            >
+                                <div className={cn(
+                                    "w-10 h-10 rounded-full flex items-center justify-center shrink-0 overflow-hidden",
+                                    msg.role === "model"
+                                        ? "bg-zinc-950 ring-2 ring-purple-500/60"
+                                        : "bg-zinc-800 ring-2 ring-blue-500/50"
+                                )}>
+                                    {msg.role === "model" ? (
+                                        <BotIcon className="w-full h-full" />
+                                    ) : (
+                                        <UserIcon className="w-full h-full text-zinc-300" />
                                     )}
-                                    <div className="prose prose-invert prose-sm max-w-none leading-relaxed break-words overflow-hidden w-full min-w-0">
-                                        <MessageContent content={msg.content} messageId={msg.id} />
-                                    </div>
-                                    {msg.isQuickSecurityScan && (
-                                        <div className="mt-4 pt-4 border-t border-white/10">
-                                            <p className="text-sm text-zinc-400 mb-3">Want a more thorough analysis?</p>
-                                            <button
-                                                onClick={() => handleSubmit(undefined, "Run deep security scan")}
-                                                disabled={loading || scanning}
-                                                className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-xl transition-all disabled:opacity-50 group"
-                                            >
-                                                <Shield className="w-4 h-4 text-red-400 group-hover:scale-110 transition-transform" />
-                                                Run Deep Scan
-                                            </button>
+                                </div>
+
+                                <div className={cn(
+                                    "flex flex-col gap-2",
+                                    msg.role === "user" ? "items-end max-w-[85%] md:max-w-[80%]" : "items-start max-w-full md:max-w-full w-full min-w-0"
+                                )}>
+                                    {/* ── REASONING: outside bubble, no background ── */}
+                                    {msg.role === "model" && msg.modelUsed === "thinking" && loading && msg.id === messages[messages.length - 1]?.id && (
+                                        <ReasoningBlock
+                                            steps={msg.reasoningSteps || []}
+                                            isStreaming={true}
+                                        />
+                                    )}
+                                    {msg.role === "model" && msg.modelUsed === "thinking" && (!loading || msg.id !== messages[messages.length - 1]?.id) && msg.reasoningSteps && msg.reasoningSteps.length > 0 && (
+                                        <ReasoningBlock
+                                            steps={msg.reasoningSteps}
+                                            isStreaming={false}
+                                        />
+                                    )}
+
+                                    {/* ── CONTENT BUBBLE: only when content exists OR flash model loading ── */}
+                                    {(msg.role === "user" || msg.content || (msg.modelUsed !== "thinking" && loading && msg.id === messages[messages.length - 1]?.id)) && (
+                                        <div className={cn(
+                                            "relative px-4 py-2.5 rounded-2xl overflow-hidden w-full min-w-0",
+                                            msg.role === "user"
+                                                ? "bg-blue-600 text-white rounded-tr-none"
+                                                : "bg-zinc-900 border border-white/10 rounded-tl-none"
+                                        )}
+                                            data-message-role={msg.role}
+                                        >
+                                            {msg.role === "model" && msg.content && (
+                                                <button
+                                                    onClick={() => handleCopyMessage(msg)}
+                                                    className="absolute top-2 right-2 p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-md transition-colors"
+                                                    title="Copy response"
+                                                >
+                                                    <CopySquaresIcon
+                                                        className={cn(
+                                                            "w-4 h-4",
+                                                            copiedMessageId === msg.id && "text-emerald-400"
+                                                        )}
+                                                    />
+                                                </button>
+                                            )}
+                                            <div className="prose prose-invert prose-sm max-w-none leading-relaxed break-words overflow-hidden w-full min-w-0">
+                                                {/* Flash model loading dots */}
+                                                {msg.role === "model" && msg.modelUsed !== "thinking" && loading && msg.id === messages[messages.length - 1]?.id && !msg.content && !msg.scanStatus && (
+                                                    <div className="flex items-center gap-2 py-1">
+                                                        <span className="flex gap-1 items-center">
+                                                            {[0, 1, 2].map(i => (
+                                                                <span
+                                                                    key={i}
+                                                                    className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-pulse"
+                                                                    style={{ animationDelay: `${i * 0.2}s` }}
+                                                                />
+                                                            ))}
+                                                        </span>
+                                                        <span className="text-xs text-zinc-500">Composing response...</span>
+                                                    </div>
+                                                )}
+                                                {isStreamingScanPlaceholder && (
+                                                    <div className="not-prose flex items-center gap-2 py-1 text-sm font-medium text-zinc-300">
+                                                        <span>{msg.scanStatus === "deep_running" ? "Deep Scan Running" : "Quick Scan Running"}</span>
+                                                        <span className="flex gap-1 items-center">
+                                                            {[0, 1, 2].map((i) => (
+                                                                <span
+                                                                    key={i}
+                                                                    className="w-1.5 h-1.5 rounded-full bg-zinc-400 animate-pulse"
+                                                                    style={{ animationDelay: `${i * 0.2}s` }}
+                                                                />
+                                                            ))}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                {msg.content && (
+                                                    <MessageContent
+                                                        content={msg.content + (loading && isLatestMessage && !msg.scanStatus ? "▋" : "")}
+                                                        messageId={msg.id}
+                                                        messages={messages}
+                                                        currentOwner={repoContext.owner}
+                                                        currentRepo={repoContext.repo}
+                                                    />
+                                                )}
+                                            </div>
+                                            {msg.scanId && (
+                                                <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-3">
+                                                    <Link
+                                                        href={`/report/${msg.scanId}`}
+                                                        target="_blank"
+                                                        className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-white bg-indigo-500 hover:bg-indigo-600 rounded-lg transition-colors shadow-sm"
+                                                    >
+                                                        <Shield className="w-3.5 h-3.5" />
+                                                        View Full Report
+                                                    </Link>
+                                                    <button
+                                                        onClick={() => {
+                                                            const url = `${window.location.origin}/report/${msg.scanId}`;
+                                                            navigator.clipboard.writeText(url);
+                                                            toast.success("Report link copied!");
+                                                        }}
+                                                        className="flex items-center gap-2 px-3 py-1.5 text-xs font-medium text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-lg transition-colors shadow-sm"
+                                                    >
+                                                        <CopySquaresIcon className="w-3.5 h-3.5" />
+                                                        Share Report
+                                                    </button>
+                                                </div>
+                                            )}
+                                            {msg.isQuickSecurityScan && (
+                                                <div className="mt-4 pt-4 border-t border-white/10">
+                                                    <p className="text-sm text-zinc-400 mb-3">Want a more thorough analysis?</p>
+                                                    <button
+                                                        onClick={() => handleSubmit(undefined, DEEP_SCAN_PROMPT, "deep_scan")}
+                                                        disabled={loading || scanning}
+                                                        className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-zinc-800 hover:bg-zinc-700 border border-white/10 rounded-xl transition-all disabled:opacity-50 group"
+                                                    >
+                                                        <Shield className="w-4 h-4 text-red-400 group-hover:scale-110 transition-transform" />
+                                                        Run Deep Scan
+                                                    </button>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
+                                    {msg.relevantFiles && msg.relevantFiles.length > 0 && !(loading && msg.id === messages[messages.length - 1]?.id) && (
+                                        <details className="group mt-1">
+                                            <summary className="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer hover:text-zinc-300 transition-colors select-none">
+                                                <FileCode className="w-3 h-3" />
+                                                <span>{msg.relevantFiles.length} files analyzed</span>
+                                                <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
+                                            </summary>
+                                            <ul className="mt-2 space-y-1 text-xs text-zinc-600 pl-4">
+                                                {msg.relevantFiles.map((file, i) => (
+                                                    <li key={i} className="font-mono">{file}</li>
+                                                ))}
+                                            </ul>
+                                        </details>
+                                    )}
                                 </div>
-
-                                {msg.relevantFiles && msg.relevantFiles.length > 0 && (
-                                    <details className="group mt-1">
-                                        <summary className="flex items-center gap-2 text-xs text-zinc-500 cursor-pointer hover:text-zinc-300 transition-colors select-none">
-                                            <FileCode className="w-3 h-3" />
-                                            <span>{msg.relevantFiles.length} files analyzed</span>
-                                            <ChevronRight className="w-3 h-3 group-open:rotate-90 transition-transform" />
-                                        </summary>
-                                        <ul className="mt-2 space-y-1 text-xs text-zinc-600 pl-4">
-                                            {msg.relevantFiles.map((file, i) => (
-                                                <li key={i} className="font-mono">{file}</li>
-                                            ))}
-                                        </ul>
-                                    </details>
-                                )}
-                            </div>
-                        </motion.div>
-                    ))}
+                            </motion.div>
+                        );
+                    })}
                 </AnimatePresence>
 
-                {(loading || streamingStatus) && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="flex gap-4 max-w-3xl mx-auto"
-                    >
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0 animate-pulse overflow-hidden">
-                            <BotIcon className="w-full h-full text-white opacity-80" />
-                        </div>
-                        <div className="bg-zinc-900 border border-white/10 p-4 rounded-2xl rounded-tl-none flex-1">
-                            {streamingStatus ? (
-                                <StreamingProgress
-                                    message={streamingStatus.message}
-                                    progress={streamingStatus.progress}
-                                />
-                            ) : (
-                                <div className="flex items-center gap-2">
-                                    <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
-                                    <span className="text-zinc-400 text-sm">Analyzing code...</span>
-                                </div>
-                            )}
 
-                            {/* Show streaming content if available */}
-                            {currentStreamingMessage && (
-                                <div className="prose prose-invert prose-sm max-w-none leading-relaxed break-words overflow-hidden w-full min-w-0 mt-4 border-t border-white/10 pt-4">
-                                    <MessageContent content={currentStreamingMessage} messageId="streaming" />
-                                </div>
-                            )}
-                        </div>
-                    </motion.div>
-                )}
                 <div ref={messagesEndRef} />
             </div>
 
@@ -963,8 +954,12 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                         allowEmptySubmit={Boolean(referenceText)}
                         modelPreference={modelPreference}
                         setModelPreference={setModelPreference}
+                        onRequireAuth={() => setShowLoginModal(true)}
                     />
                 </form>
+                <div className="mt-2 text-[10px] text-zinc-500 text-center">
+                    RepoMind can make mistakes. Consider checking important information.
+                </div>
             </div>
 
             <ConfirmDialog
@@ -978,79 +973,26 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                 onCancel={() => setShowClearConfirm(false)}
             />
 
-            {showBadgeModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-lg overflow-hidden flex flex-col relative shadow-2xl">
-                        <button
-                            onClick={() => setShowBadgeModal(false)}
-                            className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors z-10"
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
-                        <div className="p-6">
-                            <h2 className="text-xl font-bold text-white mb-6 pr-8">Share your Analysis</h2>
-                            <CopyBadge owner={repoContext.owner} repo={repoContext.repo} />
-                        </div>
-                    </div>
-                </div>
-            )}
+            <BadgeModal
+                isOpen={showBadgeModal}
+                owner={repoContext.owner}
+                repo={repoContext.repo}
+                onClose={() => setShowBadgeModal(false)}
+            />
 
-            {showSecurityModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                    <div className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-md overflow-hidden flex flex-col relative shadow-2xl">
-                        <button
-                            onClick={() => setShowSecurityModal(false)}
-                            className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors z-10"
-                        >
-                            <X className="w-5 h-5" />
-                        </button>
-                        <div className="p-6">
-                            <h2 className="text-xl font-bold text-white mb-2 pr-8 flex items-center gap-2">
-                                <Shield className="w-6 h-6 text-red-400" />
-                                Security Check
-                            </h2>
-                            <p className="text-zinc-400 text-sm mb-6">Choose the depth of your security analysis.</p>
+            <SecurityScanModal
+                isOpen={showSecurityModal}
+                isAuthenticated={Boolean(session)}
+                deepScansData={deepScansData}
+                onClose={() => setShowSecurityModal(false)}
+                onRunQuickScan={handleRunQuickScanFromModal}
+                onRunDeepScan={handleRunDeepScanFromModal}
+            />
 
-                            <div className="space-y-4">
-                                <button
-                                    onClick={() => {
-                                        setShowSecurityModal(false);
-                                        handleSubmit(undefined, "Find security vulnerabilities");
-                                    }}
-                                    className="w-full bg-zinc-800 hover:bg-zinc-700 border border-white/5 rounded-xl p-4 text-left transition-all group"
-                                >
-                                    <div className="flex items-center justify-between mb-1">
-                                        <h3 className="text-white font-medium group-hover:text-red-300 transition-colors">Quick Scan</h3>
-                                        <span className="text-xs font-mono bg-zinc-950 px-2 py-0.5 rounded text-zinc-400">~ 5 sec</span>
-                                    </div>
-                                    <p className="text-xs text-zinc-400 leading-relaxed">
-                                        Analyzes up to 20 files. Automatically flags potential secrets and common injection points. Fast and low-latency.
-                                    </p>
-                                </button>
-
-                                <button
-                                    onClick={() => {
-                                        setShowSecurityModal(false);
-                                        handleSubmit(undefined, "Run deep security scan");
-                                    }}
-                                    className="w-full bg-zinc-800 hover:bg-zinc-700 border border-red-500/20 rounded-xl p-4 text-left transition-all group"
-                                >
-                                    <div className="flex items-center justify-between mb-1">
-                                        <h3 className="text-white font-medium flex items-center gap-2 group-hover:text-red-300 transition-colors">
-                                            Deep Scan
-                                            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-                                        </h3>
-                                        <span className="text-xs font-mono bg-zinc-950 px-2 py-0.5 rounded text-zinc-400">~ 20 sec</span>
-                                    </div>
-                                    <p className="text-xs text-zinc-400 leading-relaxed">
-                                        Analyzes up to 60 files. Utilizes advanced AI pipeline to follow code paths and find complex vulnerabilities.
-                                    </p>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <LoginModal
+                isOpen={showLoginModal}
+                onClose={() => setShowLoginModal(false)}
+            />
         </div>
     );
 }

@@ -179,12 +179,22 @@ export function sanitizeMermaidCode(code: string): string {
             return trimmed;
         }
 
+        // Fix node definitions with special characters in labels
+        // Matches: ID[Label with (special) chars] or ID(Label) or ID((Label))
+        const nodeDefRegex = /^([a-zA-Z0-9_-]+)(\[|\(\(|\(|\[\[|\{\{)(.*?)(\]|\)\)|\)|\]\]|\}\})$/;
+        const nodeMatch = trimmed.match(nodeDefRegex);
+        if (nodeMatch) {
+            const [full, id, open, label, close] = nodeMatch;
+            if (!label.startsWith('"') && (label.includes('(') || label.includes(')') || label.includes('[') || label.includes(']'))) {
+                return `${id}${open}"${label.replace(/"/g, "'")}"${close}`;
+            }
+        }
+
         // Fix arrow syntax: A -- Label --> B
         // We want to ensure the label is quoted: A -- "Label" --> B
         if (trimmed.includes('-->') || trimmed.includes('-.->') || trimmed.includes('==>')) {
             // Regex to find unquoted text between arrow parts
-            // Matches: -- text -->, -. text .->, == text ==>
-            const arrowLabelRegex = /(--|\.-|==)\s+([a-zA-Z0-9\s]+?)\s+(-->|\.->|==>)/;
+            const arrowLabelRegex = /(--|\.-|==)\s+([a-zA-Z0-9\s.,;:!?()_-]+?)\s+(-->|\.->|==>)/;
             const match = trimmed.match(arrowLabelRegex);
             if (match) {
                 const [full, start, label, end] = match;
@@ -194,10 +204,28 @@ export function sanitizeMermaidCode(code: string): string {
             }
         }
 
+        // Ensure flowchart/graph always has a direction if missing
+        if (trimmed === 'graph' || trimmed === 'flowchart') {
+            return `${trimmed} TD`;
+        }
+
         return trimmed;
     });
 
-    return processedLines.filter(l => l).join('\n');
+    // Ensure all subgraphs are closed
+    let subgraphCount = 0;
+    const finalLines = processedLines.filter(l => l).map(line => {
+        if (line.startsWith('subgraph')) subgraphCount++;
+        if (line === 'end') subgraphCount--;
+        return line;
+    });
+
+    while (subgraphCount > 0) {
+        finalLines.push('end');
+        subgraphCount--;
+    }
+
+    return finalLines.join('\n');
 }
 
 /**

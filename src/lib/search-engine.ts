@@ -27,8 +27,10 @@ export function searchFiles(
 
     for (const file of files) {
         try {
-            if (options.type === 'ast' && /\.(js|jsx|ts|tsx)$/.test(file.path)) {
-                results.push(...searchAST(file, options));
+            if (options.type === 'ast') {
+                if (/\.(js|jsx|ts|tsx)$/.test(file.path)) {
+                    results.push(...searchAST(file, options));
+                }
             } else if (options.type === 'regex') {
                 results.push(...searchRegex(file, options));
             } else {

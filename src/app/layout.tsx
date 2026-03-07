@@ -3,6 +3,7 @@ import { Montserrat } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 import JsonLd from "./components/json-ld";
+import { Providers } from "@/components/Providers";
 
 const montserrat = Montserrat({
   variable: "--font-montserrat",
@@ -19,7 +20,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://repomind-ai.vercel.app"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL || "https://repomind.in"),
   applicationName: "RepoMind",
   title: {
     default: "RepoMind - Stop reading it! Start talking to it!",
@@ -58,7 +59,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "RepoMind - Stop reading it! Start talking to it!",
     description: "Agentic CAG-powered analysis for GitHub repositories. Chat with your codebase, generate visual flowcharts, uncover deep insights, and accelerate development with AI-driven repository intelligence.",
-    url: "https://repomind-ai.vercel.app",
+    url: process.env.NEXT_PUBLIC_APP_URL || "https://repomind.in",
     siteName: "RepoMind",
     images: [
       {
@@ -106,7 +107,9 @@ export default function RootLayout({
         suppressHydrationWarning
       >
         <JsonLd />
-        {children}
+        <Providers>
+          {children}
+        </Providers>
         <Toaster
           position="top-right"
           theme="dark"

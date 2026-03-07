@@ -20,7 +20,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { owner, repo } = await params;
 
     try {
-        const { metadata: data } = await import('@/lib/github').then(m => m.getRepoFullContext(owner, repo));
+        const { metadata: data } = await import('@/lib/github').then(m => m.getRepoFullContext(owner, repo)) as any;
         return {
             title: `${data.name} by ${data.owner.login} - RepoMind Architecture & Analysis`,
             description: data.description

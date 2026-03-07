@@ -11,7 +11,8 @@ interface CopyBadgeProps {
 export function CopyBadge({ owner, repo }: CopyBadgeProps) {
     const [copied, setCopied] = useState(false);
 
-    const markdownSnippet = `[![Analyzed by RepoMind](https://img.shields.io/badge/Analyzed%20by-RepoMind-4F46E5?style=for-the-badge)](https://repomind-ai.vercel.app/repo/${owner}/${repo})`;
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://repomind.in";
+    const markdownSnippet = `[![Analyzed by RepoMind](https://img.shields.io/badge/Analyzed%20by-RepoMind-4F46E5?style=for-the-badge)](${baseUrl}/repo/${owner}/${repo})`;
 
     const handleCopy = async () => {
         try {
@@ -63,7 +64,7 @@ export function CopyBadge({ owner, repo }: CopyBadgeProps) {
 
             <div className="flex items-center gap-4 mt-1 bg-black/20 p-3 rounded-lg border border-white/5">
                 <span className="text-zinc-500 uppercase tracking-wider text-xs font-semibold">Preview:</span>
-                <a href={`https://repomind-ai.vercel.app/repo/${owner}/${repo}`} target="_blank" rel="noopener noreferrer" className="block transform hover:scale-105 transition-transform drop-shadow-[0_0_12px_rgba(79,70,229,0.2)] hover:drop-shadow-[0_0_16px_rgba(79,70,229,0.4)]">
+                <a href={`${baseUrl}/repo/${owner}/${repo}`} target="_blank" rel="noopener noreferrer" className="block transform hover:scale-105 transition-transform drop-shadow-[0_0_12px_rgba(79,70,229,0.2)] hover:drop-shadow-[0_0_16px_rgba(79,70,229,0.4)]">
                     <img
                         src="https://img.shields.io/badge/Analyzed%20by-RepoMind-4F46E5?style=for-the-badge"
                         alt="Analyzed by RepoMind"

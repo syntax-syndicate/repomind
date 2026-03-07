@@ -5,27 +5,20 @@ import { Download, X, Maximize2, ZoomIn, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import html2canvas from "html2canvas-pro";
 import { motion, AnimatePresence } from "framer-motion";
+import { initMermaid } from "@/lib/mermaid-init";
 
-// Initialize mermaid
-mermaid.initialize({
-    startOnLoad: false,
-    theme: 'base',
-    securityLevel: 'strict', // Prevent XSS attacks by enabling HTML sanitization
-    suppressErrorRendering: true, // Prevent default error message from appearing at bottom of screen
-    themeVariables: {
-        primaryColor: '#18181b', // zinc-900
-        primaryTextColor: '#e4e4e7', // zinc-200
-        primaryBorderColor: '#3f3f46', // zinc-700
-        lineColor: '#a1a1aa', // zinc-400
-        secondaryColor: '#27272a', // zinc-800
-        tertiaryColor: '#27272a', // zinc-800
-        fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-    }
-});
+// Initialize mermaid once
+initMermaid();
 
-export const Mermaid = ({ chart }: { chart: string }) => {
+interface MermaidProps {
+    chart: string;
+    isStreaming?: boolean;
+}
+
+export const Mermaid = ({ chart, isStreaming = false }: MermaidProps) => {
     const [svg, setSvg] = useState<string>("");
     const [error, setError] = useState<string | null>(null);
+    const [isInternalStreaming, setIsInternalStreaming] = useState(isStreaming);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isFixing, setIsFixing] = useState(false);
     const diagramRef = useRef<HTMLDivElement>(null);
@@ -82,14 +75,17 @@ export const Mermaid = ({ chart }: { chart: string }) => {
                         setSvg(svg);
                         setError(null);
                         setIsFixing(false);
-                        console.log('✅ Layer 1 successful: Basic sanitization worked');
+                        setIsInternalStreaming(false);
                     }
                     return; // Success!
                 } catch (renderError: any) {
-                    console.warn('❌ Layer 1 failed:', renderError.message || 'Render error');
+                    // If we are streaming, don't show error yet
+                    if (isStreaming || isInternalStreaming) {
+                        return;
+                    }
 
                     // PROACTIVE AI FIXING (Layer 2 Auto-Trigger)
-                    // If this is the first failure, try to auto-fix immediately
+                    // If this is the first failure and not streaming, try to auto-fix immediately
                     if (retryCount === 0 && mounted) {
                         console.log('🔄 Auto-triggering Layer 2: Proactive AI fix...');
                         setIsFixing(true);
@@ -106,15 +102,12 @@ export const Mermaid = ({ chart }: { chart: string }) => {
                                 const { fixed } = await response.json();
                                 if (fixed) {
                                     console.log('✅ AI Fix received, retrying render...');
-                                    // Recursive call with fixed code, but increment retry count to avoid infinite loop
-                                    // We update the chart ref implicitly by passing the fixed code to mermaid.render
-                                    // But since we need to re-run the whole flow, let's just try rendering the fixed code directly here
                                     const { svg } = await mermaid.render(id + '-autofixed', fixed);
                                     if (mounted) {
                                         setSvg(svg);
                                         setError(null);
                                         setIsFixing(false);
-                                        console.log('✅ Layer 2 successful: Auto-fix worked');
+                                        setIsInternalStreaming(false);
                                     }
                                     return;
                                 }
@@ -126,7 +119,6 @@ export const Mermaid = ({ chart }: { chart: string }) => {
 
                     if (mounted) {
                         setIsFixing(false);
-                        // Sanitize error message to remove internal IDs (e.g., #dmermaid-...) and parse errors
                         const errorMessage = renderError.message || 'Syntax error in diagram';
                         const isInternalError = errorMessage.includes('dmermaid') ||
                             errorMessage.includes('#') ||
@@ -137,20 +129,24 @@ export const Mermaid = ({ chart }: { chart: string }) => {
                     }
                 }
             } catch (error: any) {
-                console.error('Complete render failure:', error);
-                if (mounted) {
-                    setIsFixing(false);
-                    setError('Failed to render diagram');
+                if (!isStreaming && !isInternalStreaming) {
+                    console.error('Complete render failure:', error);
+                    if (mounted) {
+                        setIsFixing(false);
+                        setError('Failed to render diagram');
+                    }
                 }
             }
         };
 
-        renderDiagram();
+        // Use a small delay for streaming to avoid overwhelming the CPU
+        const timer = setTimeout(renderDiagram, isStreaming ? 300 : 0);
 
         return () => {
             mounted = false;
+            clearTimeout(timer);
         };
-    }, [chart, id]);
+    }, [chart, id, isStreaming, isInternalStreaming]);
 
     const handleRetry = async () => {
         if (!chart) return;
@@ -239,11 +235,13 @@ export const Mermaid = ({ chart }: { chart: string }) => {
                     </button>
                 </div>
 
-                {isFixing && (
+                {(isFixing || isInternalStreaming || (isStreaming && !svg)) && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/50 backdrop-blur-sm rounded-lg z-10">
                         <div className="flex items-center gap-2 text-zinc-400">
                             <Sparkles className="w-5 h-5 animate-pulse text-purple-400" />
-                            <span className="text-sm font-medium">Fixing diagram...</span>
+                            <span className="text-sm font-medium">
+                                {isFixing ? "Fixing diagram..." : "Generating diagram..."}
+                            </span>
                         </div>
                     </div>
                 )}
@@ -279,7 +277,7 @@ export const Mermaid = ({ chart }: { chart: string }) => {
                             initial={{ scale: 0.9, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.9, opacity: 0 }}
-                            className="relative w-full max-w-6xl max-h-[90vh] bg-zinc-900 rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col"
+                            className="relative w-full max-w-[95vw] max-h-[95vh] bg-zinc-900 rounded-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col"
                             onClick={(e) => e.stopPropagation()}
                         >
                             {/* Header */}
@@ -307,11 +305,24 @@ export const Mermaid = ({ chart }: { chart: string }) => {
                             </div>
 
                             {/* Content */}
-                            <div className="flex-1 overflow-auto bg-zinc-950/50 relative custom-scrollbar">
-                                <div className="min-h-full w-full flex items-center justify-center p-8">
-                                    <div
+                            <div className="flex-1 overflow-auto bg-zinc-950/50 relative custom-scrollbar diagram-modal-content">
+                                <style>{`
+                                    .diagram-modal-content svg {
+                                        width: 100% !important;
+                                        height: auto !important;
+                                        max-width: 100% !important;
+                                        max-height: 80vh !important;
+                                        color-scheme: dark;
+                                    }
+                                `}</style>
+                                <div className="min-h-full w-full flex items-center justify-center p-4 md:p-12">
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: 0.2 }}
                                         ref={modalRef}
-                                        className="bg-zinc-950 p-4 rounded-lg"
+                                        className="bg-zinc-900/40 p-8 rounded-2xl border border-white/10 backdrop-blur-md shadow-2xl flex items-center justify-center"
+                                        style={{ minWidth: 'min(90vw, 800px)' }}
                                         dangerouslySetInnerHTML={{ __html: svg }}
                                     />
                                 </div>

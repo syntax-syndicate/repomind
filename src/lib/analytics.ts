@@ -28,6 +28,12 @@ export interface VisitorData {
     firstSeen: number;
 }
 
+export type ReportConversionEvent =
+    | "report_fix_in_chat_clicked"
+    | "report_create_pr_clicked"
+    | "report_create_pr_login_completed"
+    | "report_create_pr_phase2_waitlist_shown";
+
 /**
  * Fetch and parse KV info for storage stats
  */
@@ -37,8 +43,6 @@ async function getKVStats(): Promise<{ currentSize: number, maxSize: number }> {
 
         // Parse "total_data_size" and "max_data_size"
         const totalSizeMatch = info.match(/total_data_size:(\d+)/);
-        const maxSizeMatch = info.match(/max_data_size:(\d+)/);
-
         return {
             currentSize: totalSizeMatch ? parseInt(totalSizeMatch[1], 10) : 0,
             maxSize: 256 * 1024 * 1024 // Final corrected limit: 256MB
@@ -147,6 +151,26 @@ export async function trackEvent(
     } catch (error) {
         console.error("Failed to track analytics event:", error);
         // Don't throw, analytics shouldn't break the app
+    }
+}
+
+export async function trackReportConversionEvent(
+    event: ReportConversionEvent,
+    scanId?: string
+): Promise<void> {
+    try {
+        const dayKey = new Date().toISOString().slice(0, 10);
+        const pipeline = kv.pipeline();
+        pipeline.incr(`stats:report:${event}`);
+        pipeline.incr(`stats:report:${event}:${dayKey}`);
+
+        if (scanId) {
+            pipeline.incr(`stats:report:scan:${scanId}:${event}`);
+        }
+
+        await pipeline.exec();
+    } catch (error) {
+        console.error("Failed to track report conversion event:", error);
     }
 }
 

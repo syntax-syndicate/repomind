@@ -1,152 +1,35 @@
 import { useState, useRef, useEffect, useMemo } from "react";
-import { Send, Loader2, Github, MapPin, Link as LinkIcon, Users, BookMarked, ArrowLeft, Sparkles, MessageCircle, Trash2, Download, X } from "lucide-react";
+import { Github, Users, BookMarked, ArrowLeft, Sparkles, MessageCircle, Trash2, Download, X } from "lucide-react";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
+
 import { BotIcon } from "@/components/icons/BotIcon";
 import { UserIcon } from "@/components/icons/UserIcon";
 import { CopySquaresIcon } from "@/components/icons/CopySquaresIcon";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
-import { processProfileQuery } from "@/app/actions";
 import { cn } from "@/lib/utils";
 import { GitHubProfile } from "@/lib/github";
-import { EnhancedMarkdown } from "./EnhancedMarkdown";
 import { countMessageTokens, formatTokenCount, getTokenWarningLevel, isRateLimitError, getRateLimitErrorMessage, MAX_TOKENS } from "@/lib/tokens";
-import { validateMermaidSyntax, sanitizeMermaidCode, getFallbackTemplate, generateMermaidFromJSON } from "@/lib/diagram-utils";
+import { COPY_FEEDBACK_MS } from "@/lib/chat-constants";
+import { copyChatMessageContent, exportChatMessages } from "@/lib/chat-message-actions";
+import { parseStreamChunk } from "@/lib/streaming-parser";
 import { saveProfileConversation, loadProfileConversation, clearProfileConversation } from "@/lib/storage";
-import { exportChatToMarkdownFile, convertChartsToImages } from "@/lib/chat-export";
-import { renderMarkdownToHtml } from "@/lib/clipboard-utils";
 import type { ModelPreference } from "@/lib/ai-client";
-import { Brain, Zap } from "lucide-react";
-import { ConfirmDialog } from "./ConfirmDialog";
-import Link from "next/link";
-import mermaid from "mermaid";
-import { CodeBlock } from "./CodeBlock";
-import { ChatInput } from "./ChatInput";
+import type { ProfileChatMessage } from "@/lib/chat-types";
 
-interface Message {
-    id: string;
-    role: "user" | "model";
-    content: string;
-}
+import { ConfirmDialog } from "./ConfirmDialog";
+import { LoginModal } from "./LoginModal";
+import { ChatInput } from "./ChatInput";
+import { ReasoningBlock } from "./ReasoningBlock";
+import { MessageContent } from "./chat/MessageContent";
+import { useMessageSelection } from "./chat/useMessageSelection";
 
 interface ProfileChatInterfaceProps {
     profile: GitHubProfile;
     profileReadme: string | null;
     repoReadmes: { repo: string; content: string; updated_at: string; description: string | null; stars: number; forks: number; language: string | null }[];
 }
-
-// Initialize mermaid
-mermaid.initialize({
-    startOnLoad: false,
-    theme: 'base',
-    securityLevel: 'strict', // Prevent XSS attacks by enabling HTML sanitization
-    themeVariables: {
-        primaryColor: '#18181b', // zinc-900
-        primaryTextColor: '#e4e4e7', // zinc-200
-        primaryBorderColor: '#3f3f46', // zinc-700
-        lineColor: '#a1a1aa', // zinc-400
-        secondaryColor: '#27272a', // zinc-800
-        tertiaryColor: '#27272a', // zinc-800
-        fontFamily: 'ui-sans-serif, system-ui, sans-serif',
-    }
-});
-
-import { Mermaid } from "./Mermaid";
-
-import { repairMarkdown } from "@/lib/markdown-utils";
-
-// Extract MessageContent to a memoized component
-const MessageContent = ({ content, messageId }: { content: string, messageId: string }) => {
-    const repairedContent = useMemo(() => repairMarkdown(content), [content]);
-
-    // Use a ref to allow recursive reference to components
-    const componentsRef = useRef<any>(null);
-
-    const components = useMemo(() => {
-        const comps = {
-            code: ({ className, children, ...props }: any) => {
-                const match = /language-(\w+)/.exec(className || "");
-                const isMermaid = match && match[1] === "mermaid";
-                const isMermaidJson = match && match[1] === "mermaid-json";
-
-                if (isMermaid) {
-                    return <Mermaid key={messageId} chart={String(children).replace(/\n$/, "")} />;
-                }
-
-                if (isMermaidJson) {
-                    try {
-                        const jsonContent = String(children).replace(/\n$/, "");
-                        const data = JSON.parse(jsonContent);
-                        const chart = generateMermaidFromJSON(data);
-                        return <Mermaid key={messageId} chart={chart} />;
-                    } catch (e) {
-                        return (
-                            <div className="flex items-center gap-2 p-4 bg-zinc-900/50 rounded-lg border border-white/10">
-                                <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
-                                <span className="text-zinc-400 text-sm">Generating diagram...</span>
-                            </div>
-                        );
-                    }
-                }
-
-                const contentStr = String(children);
-                const isBlock = contentStr.endsWith('\n');
-                // ProfileChatInterface doesn't have inline prop in destructuring, but we can check if it was passed in props
-                // actually we destructured it in ChatInterface but here it was ...props. 
-                // Let's destructure it for clarity or just use props.inline
-                const inline = (props as any).inline;
-                const shouldRenderBlock = match || isBlock || (inline === false);
-
-                return shouldRenderBlock ? (
-                    <CodeBlock
-                        language={match ? match[1] : "markdown"}
-                        value={contentStr.replace(/\n$/, "")}
-                        components={componentsRef.current}
-                    />
-                ) : (
-                    <code className="bg-zinc-800 px-1.5 py-0.5 rounded text-red-400 font-mono text-sm" {...props}>
-                        {children}
-                    </code>
-                );
-            },
-            pre: ({ children }: any) => <>{children}</>,
-            table: ({ children }: any) => (
-                <div className="overflow-x-auto my-4">
-                    <table className="min-w-full border-collapse border border-zinc-700">
-                        {children}
-                    </table>
-                </div>
-            ),
-            thead: ({ children }: any) => (
-                <thead className="bg-zinc-800">{children}</thead>
-            ),
-            tbody: ({ children }: any) => (
-                <tbody className="bg-zinc-900/50">{children}</tbody>
-            ),
-            tr: ({ children }: any) => (
-                <tr className="border-b border-zinc-700">{children}</tr>
-            ),
-            th: ({ children }: any) => (
-                <th className="px-4 py-2 text-left text-sm font-semibold text-white border border-zinc-700">
-                    {children}
-                </th>
-            ),
-            td: ({ children }: any) => (
-                <td className="px-4 py-2 text-sm text-zinc-300 border border-zinc-700">
-                    {children}
-                </td>
-            ),
-        };
-        componentsRef.current = comps;
-        return comps;
-    }, [messageId]);
-
-    return (
-        <EnhancedMarkdown
-            content={repairedContent}
-            components={components}
-        />
-    );
-};
 
 const PROFILE_SUGGESTIONS = [
     "What projects is he/she known for?",
@@ -156,7 +39,8 @@ const PROFILE_SUGGESTIONS = [
 ];
 
 export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: ProfileChatInterfaceProps) {
-    const [messages, setMessages] = useState<Message[]>([
+    const { data: session } = useSession();
+    const [messages, setMessages] = useState<ProfileChatMessage[]>([
         {
             id: "welcome",
             role: "model",
@@ -168,35 +52,45 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
     const [showSuggestions, setShowSuggestions] = useState(true);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const chatScrollRef = useRef<HTMLDivElement>(null);
+    const {
+        selectionAnchor,
+        referenceText,
+        handleSelection,
+        handleAskFromSelection,
+        clearReference,
+    } = useMessageSelection(chatScrollRef);
+
     const [initialized, setInitialized] = useState(false);
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-    const [selectionText, setSelectionText] = useState("");
-    const [selectionAnchor, setSelectionAnchor] = useState<{ x: number; y: number } | null>(null);
-    const [referenceText, setReferenceText] = useState("");
     const [modelPreference, setModelPreference] = useState<ModelPreference>("flash");
+    const [showLoginModal, setShowLoginModal] = useState(false);
+    const isSubmittingRef = useRef(false);
 
     // Load conversation on mount
     const toastShownRef = useRef(false);
     useEffect(() => {
-        const saved = loadProfileConversation(profile.login);
-        if (saved && saved.length > 1) {
-            setMessages(saved);
-            setShowSuggestions(false);
-            if (!toastShownRef.current) {
-                toast.info('Conversation restored', { duration: 2000 });
-                toastShownRef.current = true;
+        const fetchConversation = async () => {
+            const saved = await loadProfileConversation(profile.login, !!session);
+            if (saved && saved.length > 1) {
+                setMessages(saved);
+                setShowSuggestions(false);
+                if (!toastShownRef.current) {
+                    toast.info('Conversation restored', { duration: 2000 });
+                    toastShownRef.current = true;
+                }
             }
-        }
-        setInitialized(true);
-    }, [profile.login]);
+            setInitialized(true);
+        };
+        fetchConversation();
+    }, [profile.login, session]);
 
     // Save on every message change
     useEffect(() => {
         if (initialized && messages.length > 1) {
-            saveProfileConversation(profile.login, messages);
+            saveProfileConversation(profile.login, messages, !!session);
         }
-    }, [messages, initialized, profile.login]);
+    }, [messages, initialized, profile.login, session]);
 
     // Calculate total token count
     const totalTokens = useMemo(() => {
@@ -218,10 +112,125 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
         setShowSuggestions(false);
     };
 
+    const buildCombinedInput = (trimmedInput: string, selectedReferenceText: string) => {
+        return selectedReferenceText
+            ? `Reference:\n> ${selectedReferenceText.replace(/\n/g, "\n> ")}\n\n${trimmedInput || "Please continue."}`
+            : trimmedInput;
+    };
+
+    const startProfileStreamMessage = (selectedModelPreference: ModelPreference) => {
+        const modelMsgId = (Date.now() + 1).toString();
+        setMessages((prev) => [
+            ...prev,
+            {
+                id: modelMsgId,
+                role: "model",
+                content: "",
+                reasoningSteps: [],
+                modelUsed: selectedModelPreference,
+            },
+        ]);
+        return modelMsgId;
+    };
+
+    const runProfileStreamingFlow = async (modelMsgId: string, combinedInput: string) => {
+        const response = await fetch("/api/chat/profile", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                query: combinedInput,
+                profileContext: {
+                    username: profile.login,
+                    profile,
+                    profileReadme,
+                    repoReadmes,
+                },
+                modelPreference,
+            }),
+        });
+
+        if (!response.ok || !response.body) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData?.error || "Failed to start analysis stream.");
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        const accumulatedReasoning: string[] = [];
+        let contentText = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                break;
+            }
+
+            const parsedChunk = parseStreamChunk(buffer, decoder.decode(value, { stream: true }));
+            buffer = parsedChunk.buffer;
+
+            for (const invalidLine of parsedChunk.invalidLines) {
+                console.warn("Stream parse error:", invalidLine);
+            }
+
+            for (const chunk of parsedChunk.updates) {
+                if (chunk.type === "status") {
+                    accumulatedReasoning.push(chunk.message);
+                    setMessages((prev) => prev.map((message) =>
+                        message.id === modelMsgId ? { ...message, reasoningSteps: [...accumulatedReasoning] } : message
+                    ));
+                } else if (chunk.type === "thought") {
+                    accumulatedReasoning.push(chunk.text);
+                    setMessages((prev) => prev.map((message) =>
+                        message.id === modelMsgId ? { ...message, reasoningSteps: [...accumulatedReasoning] } : message
+                    ));
+                } else if (chunk.type === "content") {
+                    if (!contentText && chunk.text) {
+                        contentText = chunk.text.trimStart();
+                    } else {
+                        contentText += chunk.text;
+                    }
+                    setMessages((prev) => prev.map((message) =>
+                        message.id === modelMsgId ? { ...message, content: contentText } : message
+                    ));
+                } else if (chunk.type === "error") {
+                    throw new Error(chunk.message);
+                }
+            }
+        }
+
+        if (buffer.trim()) {
+            const finalChunk = parseStreamChunk("", `${buffer}\n`);
+            for (const invalidLine of finalChunk.invalidLines) {
+                console.warn("Stream parse error:", invalidLine);
+            }
+            for (const chunk of finalChunk.updates) {
+                if (chunk.type === "content") {
+                    if (!contentText && chunk.text) {
+                        contentText = chunk.text.trimStart();
+                    } else {
+                        contentText += chunk.text;
+                    }
+                }
+            }
+        }
+
+        setMessages((prev) => prev.map((message) =>
+            message.id === modelMsgId ? { ...message, content: contentText } : message
+        ));
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        if (isSubmittingRef.current) return;
+        isSubmittingRef.current = true;
+
         const trimmedInput = input.trim();
-        if ((!trimmedInput && !referenceText) || loading) return;
+        if ((!trimmedInput && !referenceText) || loading) {
+            isSubmittingRef.current = false;
+            return;
+        }
 
         // Check token limit
         if (totalTokens >= MAX_TOKENS) {
@@ -229,16 +238,15 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
                 description: "Please clear the chat to start a new conversation.",
                 duration: 5000,
             });
+            isSubmittingRef.current = false;
             return;
         }
 
         setShowSuggestions(false);
 
-        const combinedInput = referenceText
-            ? `Reference:\n> ${referenceText.replace(/\n/g, "\n> ")}\n\n${trimmedInput || "Please continue."}`
-            : trimmedInput;
+        const combinedInput = buildCombinedInput(trimmedInput, referenceText);
 
-        const userMsg: Message = {
+        const userMsg: ProfileChatMessage = {
             id: Date.now().toString(),
             role: "user",
             content: combinedInput,
@@ -246,37 +254,13 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
 
         setMessages((prev) => [...prev, userMsg]);
         setInput("");
-        setReferenceText("");
+        clearReference();
         setLoading(true);
 
         try {
-            // Get visitor ID
-            let visitorId = localStorage.getItem("visitor_id");
-            if (!visitorId) {
-                visitorId = crypto.randomUUID();
-                localStorage.setItem("visitor_id", visitorId);
-            }
-
-            const history = messages.map(m => ({
-                role: m.role,
-                content: m.content
-            }));
-
-            const result = await processProfileQuery(combinedInput, {
-                username: profile.login,
-                profile: profile, // Pass full profile object
-                profileReadme,
-                repoReadmes,
-            }, visitorId, history, modelPreference);
-
-            const modelMsg: Message = {
-                id: (Date.now() + 1).toString(),
-                role: "model",
-                content: result.answer,
-            };
-
-            setMessages((prev) => [...prev, modelMsg]);
-        } catch (error: any) {
+            const modelMsgId = startProfileStreamMessage(modelPreference);
+            await runProfileStreamingFlow(modelMsgId, combinedInput);
+        } catch (error: unknown) {
             console.error(error);
 
             // Check if it's a rate limit error
@@ -292,7 +276,7 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
             }
 
             // Show user-friendly error message
-            const errorMsg: Message = {
+            const errorMsg: ProfileChatMessage = {
                 id: (Date.now() + 1).toString(),
                 role: "model",
                 content: "I encountered an error while analyzing the profile. Please try again or rephrase your question.",
@@ -300,67 +284,12 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
             setMessages((prev) => [...prev, errorMsg]);
         } finally {
             setLoading(false);
+            isSubmittingRef.current = false;
         }
     };
 
-    const handleSelection = () => {
-        const selection = window.getSelection();
-        if (!selection || selection.isCollapsed) {
-            setSelectionAnchor(null);
-            setSelectionText("");
-            return;
-        }
-
-        const anchorNode = selection.anchorNode;
-        const focusNode = selection.focusNode;
-        const getModelContainer = (node: Node | null) => {
-            const element = node instanceof Element ? node : node?.parentElement;
-            return element?.closest('[data-message-role="model"]') || null;
-        };
-
-        const startContainer = getModelContainer(anchorNode);
-        const endContainer = getModelContainer(focusNode);
-        if (!startContainer || startContainer !== endContainer) {
-            setSelectionAnchor(null);
-            setSelectionText("");
-            return;
-        }
-
-        const range = selection.getRangeAt(0);
-        const rect = range.getBoundingClientRect();
-        const scrollContainer = chatScrollRef.current;
-        if (!scrollContainer) return;
-
-        const containerRect = scrollContainer.getBoundingClientRect();
-        const x = rect.left - containerRect.left + rect.width / 2;
-        const y = rect.top - containerRect.top + scrollContainer.scrollTop;
-        const text = selection.toString().trim();
-
-        if (!text) {
-            setSelectionAnchor(null);
-            setSelectionText("");
-            return;
-        }
-
-        setSelectionAnchor({ x, y });
-        setSelectionText(text);
-    };
-
-    const handleAskFromSelection = () => {
-        if (!selectionText) return;
-        setReferenceText(selectionText);
-        setSelectionAnchor(null);
-        setSelectionText("");
-        setInput((current) => current);
-        chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: "smooth" });
-    };
-
-    const clearReference = () => {
-        setReferenceText("");
-    };
-
-    const handleClearChat = () => {
-        clearProfileConversation(profile.login);
+    const handleClearChat = async () => {
+        await clearProfileConversation(profile.login, !!session);
         setMessages([
             {
                 id: "welcome",
@@ -372,49 +301,13 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
         toast.success("Chat history cleared");
     };
 
-    const handleCopyMessage = async (message: Message) => {
+    const handleCopyMessage = async (message: ProfileChatMessage) => {
         try {
-            // Convert mermaid blocks to inline SVG data URIs before clipboard copy.
-            const markdown = await convertChartsToImages(message.content, {
-                renderMermaid: (code, id) => mermaid.render(id, code).then((out) => out.svg),
-                convertMermaidJson: (json) => {
-                    try {
-                        return generateMermaidFromJSON(JSON.parse(json));
-                    } catch {
-                        return null;
-                    }
-                },
-            });
-            // Render markdown to static HTML for rich clipboard paste into docs.
-            const html = renderMarkdownToHtml(markdown);
-            if ("ClipboardItem" in window && navigator.clipboard.write) {
-                try {
-                    // Prefer HTML + plain text for best compatibility.
-                    const item = new ClipboardItem({
-                        "text/html": new Blob([html], { type: "text/html" }),
-                        "text/plain": new Blob([markdown], { type: "text/plain" }),
-                    });
-                    await navigator.clipboard.write([item]);
-                } catch {
-                    try {
-                        // Fallback to markdown + plain text if HTML write is blocked.
-                        const item = new ClipboardItem({
-                            "text/markdown": new Blob([markdown], { type: "text/markdown" }),
-                            "text/plain": new Blob([markdown], { type: "text/plain" }),
-                        });
-                        await navigator.clipboard.write([item]);
-                    } catch {
-                        // Final fallback for browsers that only allow writeText.
-                        await navigator.clipboard.writeText(markdown);
-                    }
-                }
-            } else {
-                await navigator.clipboard.writeText(markdown);
-            }
+            await copyChatMessageContent(message.content);
             setCopiedMessageId(message.id);
             setTimeout(() => {
                 setCopiedMessageId((current) => (current === message.id ? null : current));
-            }, 1500);
+            }, COPY_FEEDBACK_MS);
             toast.success("Response copied");
         } catch {
             toast.error("Failed to copy response");
@@ -423,18 +316,10 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
 
     const handleExportChat = async () => {
         const contextLabel = profile.login;
-        await exportChatToMarkdownFile({
+        await exportChatMessages({
             title: `${contextLabel} Chat Export`,
             contextLabel,
             messages,
-            renderMermaid: (code, id) => mermaid.render(id, code).then((out) => out.svg),
-            convertMermaidJson: (json) => {
-                try {
-                    return generateMermaidFromJSON(JSON.parse(json));
-                } catch {
-                    return null;
-                }
-            },
         });
         toast.success("Chat exported");
     };
@@ -442,8 +327,8 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
     return (
         <div className="flex flex-col h-[100dvh] bg-black text-white">
             {/* Profile Header */}
-            <div className="border-b border-white/10 p-6 bg-zinc-900/50 backdrop-blur-sm">
-                <div className="flex items-start gap-6 max-w-3xl mx-auto">
+            <div className="border-b border-white/10 p-4 md:p-6 bg-zinc-900/50 backdrop-blur-sm">
+                <div className="flex items-start gap-3 md:gap-6 max-w-3xl mx-auto">
                     <Link
                         href="/"
                         className="p-2 hover:bg-white/10 rounded-lg transition-colors"
@@ -451,14 +336,16 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
                     >
                         <ArrowLeft className="w-5 h-5 text-zinc-400 hover:text-white" />
                     </Link>
+                    {/* Profile avatars use source URLs from GitHub and remain intentionally unoptimized here. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                         src={profile.avatar_url}
                         alt={profile.login}
                         className="w-10 h-10 md:w-20 md:h-20 rounded-xl border-2 border-white/20"
                     />
-                    <div className="flex-1">
-                        <div className="flex items-center gap-3 mb-2">
-                            <h1 className="text-lg md:text-2xl font-bold truncate max-w-[200px] md:max-w-md">{profile.name || profile.login}</h1>
+                    <div className="flex-1 min-w-0">
+                        <div className="flex flex-wrap md:flex-nowrap items-center gap-2 md:gap-3 mb-2">
+                            <h1 className="text-lg md:text-2xl font-bold truncate max-w-[140px] md:max-w-md">{profile.name || profile.login}</h1>
                             <a
                                 href={profile.html_url}
                                 target="_blank"
@@ -489,15 +376,7 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
 
                             <button
                                 onClick={() => setShowClearConfirm(true)}
-                                className="hidden md:block p-2 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition-colors"
-                                title="Clear Chat"
-                            >
-                                <Trash2 className="w-5 h-5" />
-                            </button>
-
-                            <button
-                                onClick={() => setShowClearConfirm(true)}
-                                className="md:hidden ml-auto p-2 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition-colors"
+                                className="p-2 text-zinc-400 hover:text-red-400 hover:bg-zinc-800 rounded-lg transition-colors"
                                 title="Clear Chat"
                             >
                                 <Trash2 className="w-5 h-5" />
@@ -549,13 +428,13 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
                             <div className={cn(
                                 "w-10 h-10 rounded-full flex items-center justify-center shrink-0 shadow-lg overflow-hidden",
                                 msg.role === "model"
-                                    ? "bg-gradient-to-br from-purple-600 to-blue-600"
-                                    : "bg-gradient-to-br from-zinc-700 to-zinc-900 border border-white/10"
+                                    ? "bg-zinc-950 ring-2 ring-purple-500/60"
+                                    : "bg-zinc-800 ring-2 ring-blue-500/50"
                             )}>
                                 {msg.role === "model" ? (
-                                    <BotIcon className="w-full h-full text-white" />
+                                    <BotIcon className="w-full h-full" />
                                 ) : (
-                                    <UserIcon className="w-full h-full text-white" />
+                                    <UserIcon className="w-full h-full text-zinc-300" />
                                 )}
                             </div>
 
@@ -563,52 +442,77 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
                                 "flex flex-col gap-2",
                                 msg.role === "user" ? "items-end max-w-[80%]" : "items-start w-full min-w-0"
                             )}>
-                                <div className={cn(
-                                    "relative p-4 rounded-2xl overflow-hidden min-w-0",
-                                    msg.role === "user"
-                                        ? "bg-blue-600 text-white rounded-tr-none"
-                                        : "bg-zinc-900 border border-white/10 rounded-tl-none"
+                                {/* ── REASONING: outside bubble, no background ── */}
+                                {msg.role === "model" && msg.modelUsed === "thinking" && loading && msg.id === messages[messages.length - 1]?.id && (
+                                    <ReasoningBlock
+                                        steps={msg.reasoningSteps || []}
+                                        isStreaming={true}
+                                    />
                                 )}
-                                    data-message-role={msg.role}
-                                >
-                                    {msg.role === "model" && (
-                                        <button
-                                            onClick={() => handleCopyMessage(msg)}
-                                            className="absolute top-2 right-2 p-1.5 text-zinc-400 hover:text-white hover:bg-white/10 rounded-md transition-colors"
-                                            title="Copy response"
-                                        >
-                                            <CopySquaresIcon
-                                                className={cn(
-                                                    "w-4 h-4",
-                                                    copiedMessageId === msg.id && "text-emerald-400"
-                                                )}
-                                            />
-                                        </button>
+                                {msg.role === "model" && msg.modelUsed === "thinking" && (!loading || msg.id !== messages[messages.length - 1]?.id) && msg.reasoningSteps && msg.reasoningSteps.length > 0 && (
+                                    <ReasoningBlock
+                                        steps={msg.reasoningSteps}
+                                        isStreaming={false}
+                                    />
+                                )}
+
+                                {/* ── CONTENT BUBBLE: only when content exists OR flash model loading ── */}
+                                {(msg.role === "user" || msg.content || (msg.modelUsed !== "thinking" && loading && msg.id === messages[messages.length - 1]?.id)) && (
+                                    <div className={cn(
+                                        "relative px-4 py-2.5 rounded-2xl overflow-hidden min-w-0",
+                                        msg.role === "user"
+                                            ? "bg-blue-600 text-white rounded-tr-none"
+                                            : "bg-zinc-900 border border-white/10 rounded-tl-none"
                                     )}
-                                    <div className="prose prose-invert prose-sm max-w-none leading-relaxed break-words overflow-hidden w-full min-w-0">
-                                        <MessageContent content={msg.content} messageId={msg.id} />
+                                        data-message-role={msg.role}
+                                    >
+                                        {msg.role === "model" && msg.content && !loading && (
+                                            <button
+                                                onClick={() => handleCopyMessage(msg)}
+                                                className="absolute top-2 right-2 p-1.5 text-zinc-600 hover:text-zinc-400 hover:bg-white/10 rounded-md transition-colors"
+                                                title="Copy response"
+                                            >
+                                                <CopySquaresIcon
+                                                    className={cn(
+                                                        "w-4 h-4",
+                                                        copiedMessageId === msg.id && "text-emerald-400"
+                                                    )}
+                                                />
+                                            </button>
+                                        )}
+                                        <div className="prose prose-invert prose-sm max-w-none leading-relaxed break-words overflow-hidden w-full min-w-0">
+                                            {/* Flash model loading dots */}
+                                            {msg.role === "model" && msg.modelUsed !== "thinking" && loading && msg.id === messages[messages.length - 1]?.id && !msg.content && (
+                                                <div className="flex items-center gap-2 py-1">
+                                                    <span className="flex gap-1 items-center">
+                                                        {[0, 1, 2].map(i => (
+                                                            <span
+                                                                key={i}
+                                                                className="w-1.5 h-1.5 rounded-full bg-zinc-500 animate-pulse"
+                                                                style={{ animationDelay: `${i * 0.2}s` }}
+                                                            />
+                                                        ))}
+                                                    </span>
+                                                    <span className="text-xs text-zinc-500">Composing response...</span>
+                                                </div>
+                                            )}
+                                            {msg.content && (
+                                                <MessageContent
+                                                    content={msg.content + (loading && msg.id === messages[messages.length - 1]?.id ? "▋" : "")}
+                                                    messageId={msg.id}
+                                                    messages={messages}
+                                                    currentOwner={profile.login}
+                                                />
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
+                                )}
                             </div>
                         </motion.div>
                     ))}
                 </AnimatePresence>
 
-                {loading && (
-                    <motion.div
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        className="flex gap-4 max-w-3xl mx-auto"
-                    >
-                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center shrink-0 shadow-lg animate-pulse overflow-hidden">
-                            <BotIcon className="w-full h-full text-white opacity-80" />
-                        </div>
-                        <div className="bg-zinc-900 border border-white/10 p-4 rounded-2xl rounded-tl-none flex items-center gap-2">
-                            <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
-                            <span className="text-zinc-400 text-sm">Analyzing profile...</span>
-                        </div>
-                    </motion.div>
-                )}
+                {/* Old loading bubble removed - streaming now happens inline in the last message */}
                 <div ref={messagesEndRef} />
             </div>
 
@@ -665,8 +569,12 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
                         allowEmptySubmit={Boolean(referenceText)}
                         modelPreference={modelPreference}
                         setModelPreference={setModelPreference}
+                        onRequireAuth={() => setShowLoginModal(true)}
                     />
                 </form>
+                <div className="mt-2 text-[10px] text-zinc-500 text-center">
+                    RepoMind can make mistakes. Consider checking important information.
+                </div>
             </div>
 
             <ConfirmDialog
@@ -678,6 +586,11 @@ export function ProfileChatInterface({ profile, profileReadme, repoReadmes }: Pr
                 confirmVariant="danger"
                 onConfirm={handleClearChat}
                 onCancel={() => setShowClearConfirm(false)}
+            />
+
+            <LoginModal
+                isOpen={showLoginModal}
+                onClose={() => setShowLoginModal(false)}
             />
         </div >
     );
