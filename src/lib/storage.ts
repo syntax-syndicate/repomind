@@ -1,9 +1,3 @@
-/**
- * Smart localStorage management for conversation persistence
- * Implements 10MB limit with automatic cleanup of oldest conversations
- * Supports cloud syncing for authenticated users
- */
-import axios from 'axios';
 import type { ChatRole, StoredMessage } from "@/lib/chat-types";
 
 export type Message = StoredMessage & Record<string, unknown>;
@@ -69,7 +63,11 @@ function normalizeMessages(rawMessages: unknown): Message[] {
 export async function saveConversation(owner: string, repo: string, messages: Message[], useCloudStorage = false): Promise<void> {
     try {
         if (useCloudStorage) {
-            await axios.post('/api/chat', { owner, repo, messages }).catch(err => console.error('Failed to sync to cloud:', err));
+            await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ owner, repo, messages })
+            }).catch(err => console.error('Failed to sync to cloud:', err));
         }
 
         // Always save locally as fallback/cache
@@ -117,15 +115,18 @@ export async function loadConversation(owner: string, repo: string, useCloudStor
     try {
         if (useCloudStorage) {
             try {
-                const { data } = await axios.get('/api/chat', { params: { owner, repo } });
-                if (data.messages && data.messages.length > 0) {
-                    const normalizedCloudMessages = normalizeMessages(data.messages);
-                    if (normalizedCloudMessages.length === 0) {
-                        return null;
+                const response = await fetch(`/api/chat?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.messages && data.messages.length > 0) {
+                        const normalizedCloudMessages = normalizeMessages(data.messages);
+                        if (normalizedCloudMessages.length === 0) {
+                            return null;
+                        }
+                        // Update local cache
+                        saveConversation(owner, repo, normalizedCloudMessages, false);
+                        return normalizedCloudMessages;
                     }
-                    // Update local cache
-                    saveConversation(owner, repo, normalizedCloudMessages, false);
-                    return normalizedCloudMessages;
                 }
             } catch (err) {
                 console.error('Failed to load from cloud, falling back to local:', err);
@@ -151,7 +152,9 @@ export async function loadConversation(owner: string, repo: string, useCloudStor
 export async function clearConversation(owner: string, repo: string, useCloudStorage = false): Promise<void> {
     try {
         if (useCloudStorage) {
-            await axios.delete('/api/chat', { params: { owner, repo } }).catch(err => console.error('Failed to clear from cloud:', err));
+            await fetch(`/api/chat?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}`, {
+                method: 'DELETE'
+            }).catch(err => console.error('Failed to clear from cloud:', err));
         }
         const key = `${STORAGE_PREFIX}${owner}_${repo}`;
         localStorage.removeItem(key);
@@ -166,7 +169,11 @@ export async function clearConversation(owner: string, repo: string, useCloudSto
 export async function saveProfileConversation(username: string, messages: Message[], useCloudStorage = false): Promise<void> {
     try {
         if (useCloudStorage) {
-            await axios.post('/api/chat', { username, messages }).catch(err => console.error('Failed to sync profile chat to cloud:', err));
+            await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, messages })
+            }).catch(err => console.error('Failed to sync profile chat to cloud:', err));
         }
 
         const currentSize = getStorageSize();
@@ -202,14 +209,17 @@ export async function loadProfileConversation(username: string, useCloudStorage 
     try {
         if (useCloudStorage) {
             try {
-                const { data } = await axios.get('/api/chat', { params: { username } });
-                if (data.messages && data.messages.length > 0) {
-                    const normalizedCloudMessages = normalizeMessages(data.messages);
-                    if (normalizedCloudMessages.length === 0) {
-                        return null;
+                const response = await fetch(`/api/chat?username=${encodeURIComponent(username)}`);
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.messages && data.messages.length > 0) {
+                        const normalizedCloudMessages = normalizeMessages(data.messages);
+                        if (normalizedCloudMessages.length === 0) {
+                            return null;
+                        }
+                        saveProfileConversation(username, normalizedCloudMessages, false);
+                        return normalizedCloudMessages;
                     }
-                    saveProfileConversation(username, normalizedCloudMessages, false);
-                    return normalizedCloudMessages;
                 }
             } catch (err) {
                 console.error('Failed to load profile from cloud, falling back to local:', err);
@@ -235,7 +245,9 @@ export async function loadProfileConversation(username: string, useCloudStorage 
 export async function clearProfileConversation(username: string, useCloudStorage = false): Promise<void> {
     try {
         if (useCloudStorage) {
-            await axios.delete('/api/chat', { params: { username } }).catch(err => console.error('Failed to clear profile chat from cloud:', err));
+            await fetch(`/api/chat?username=${encodeURIComponent(username)}`, {
+                method: 'DELETE'
+            }).catch(err => console.error('Failed to clear profile chat from cloud:', err));
         }
         const key = `${PROFILE_PREFIX}${username}`;
         localStorage.removeItem(key);
