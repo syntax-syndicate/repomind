@@ -30,6 +30,7 @@ export interface VisitorData {
 
 export type ReportConversionEvent =
     | "report_fix_in_chat_clicked"
+    | "report_discuss_in_chat_clicked"
     | "report_create_pr_clicked"
     | "report_create_pr_login_completed"
     | "report_create_pr_phase2_waitlist_shown";

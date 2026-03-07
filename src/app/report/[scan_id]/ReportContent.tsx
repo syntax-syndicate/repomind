@@ -162,14 +162,16 @@ export function ReportContent({
             .filter((entry) => entry.index >= 0);
     }, [topFixes, scan.findings]);
 
-    const handleFixInChat = (index: number) => {
-        void trackReportConversion("report_fix_in_chat_clicked", scan.id);
-        router.push(`/fix/${scan.id}?finding=${index}&intent=chat`);
-    };
+    const handleDiscussInChat = (index: number) => {
+        const finding = scan.findings[index];
+        const prompt = `I'm looking at a security finding: "${finding.title}" in ${finding.file}. 
+Issue: ${finding.description}
+Recommendation: ${finding.recommendation}
 
-    const handleCreatePrClick = (index: number) => {
-        void trackReportConversion("report_create_pr_clicked", scan.id);
-        router.push(`/fix/${scan.id}?finding=${index}&intent=pr`);
+Can you help me understand how to fix this?`;
+
+        void trackReportConversion("report_discuss_in_chat_clicked", scan.id);
+        router.push(`/chat?q=${encodeURIComponent(`${scan.owner}/${scan.repo}`)}&prompt=${encodeURIComponent(prompt)}`);
     };
 
     return (
@@ -307,11 +309,11 @@ export function ReportContent({
                                         </p>
                                     </div>
                                     <button
-                                        onClick={() => handleFixInChat(index)}
+                                        onClick={() => handleDiscussInChat(index)}
                                         className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-all"
                                     >
                                         <MessageCircle className="w-4 h-4" />
-                                        Fix in Chat
+                                        Discuss Fix
                                     </button>
                                 </div>
                             ))}
@@ -350,18 +352,11 @@ export function ReportContent({
                                     </div>
                                     <div className="flex items-center gap-2 print:hidden">
                                         <button
-                                            onClick={() => handleFixInChat(idx)}
-                                            className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-all"
+                                            onClick={() => handleDiscussInChat(idx)}
+                                            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold transition-all"
                                         >
                                             <MessageCircle className="w-4 h-4" />
-                                            Fix in Chat
-                                        </button>
-                                        <button
-                                            onClick={() => handleCreatePrClick(idx)}
-                                            className="inline-flex items-center justify-center gap-2 px-3.5 py-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-white/10 text-white text-sm font-semibold transition-all"
-                                        >
-                                            <GitPullRequest className="w-4 h-4" />
-                                            Create PR
+                                            Discuss Fix
                                         </button>
                                     </div>
                                 </div>

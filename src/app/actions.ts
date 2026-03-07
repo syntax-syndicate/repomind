@@ -30,7 +30,6 @@ import {
     trackReportConversionEvent,
     type ReportConversionEvent,
 } from "@/lib/analytics";
-import { generateSecurityPatch } from "@/lib/gemini-security";
 import type { StreamUpdate } from "@/lib/streaming-types";
 import type { GitHubProfile } from "@/lib/github";
 import type { SecurityFinding, ScanSummary } from "@/lib/security-scanner";
@@ -522,27 +521,7 @@ export async function getRemainingDeepScans(): Promise<{ used: number; total: nu
     return { used: currentScans, total, resetsAt };
 }
 
-export async function generateSecurityPatchForFinding(
-    owner: string,
-    repo: string,
-    finding: SecurityFinding
-): Promise<{ patch: string; explanation: string }> {
-    try {
-        const content = await getFileContent(owner, repo, finding.file);
-        const snippet = typeof content === "string" ? extractSnippet(content, finding.line) : "";
-        return await generateSecurityPatch({
-            filePath: finding.file,
-            fileContent: typeof content === "string" ? content : "",
-            line: finding.line,
-            description: finding.description,
-            recommendation: finding.recommendation,
-            snippet,
-        });
-    } catch (error: any) {
-        console.error("Security patch generation failed:", error);
-        return { patch: "", explanation: "Failed to generate patch." };
-    }
-}
+
 
 // ─── Public Actions — Code Analysis & Artifact Generation ───────────────────
 
