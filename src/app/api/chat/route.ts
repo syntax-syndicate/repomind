@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import { getInvalidSessionApiError, getSessionAuthState, getSessionUserId } from "@/lib/session-guard";
 
 type ConversationParams =
     | { scope: "repo"; conversationKey: string; owner: string; repo: string; username: null }
@@ -37,8 +38,17 @@ function resolveConversation(
 export async function GET(req: NextRequest) {
     try {
         const session = await auth();
-        if (!session?.user?.id) {
+        const authState = getSessionAuthState(session);
+        if (authState === "unauthenticated") {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        if (authState === "invalid") {
+            return NextResponse.json(getInvalidSessionApiError(), { status: 401 });
+        }
+
+        const userId = getSessionUserId(session);
+        if (!userId) {
+            return NextResponse.json(getInvalidSessionApiError(), { status: 401 });
         }
 
         const { searchParams } = new URL(req.url);
@@ -54,7 +64,7 @@ export async function GET(req: NextRequest) {
         const record = await prisma.chatConversation.findUnique({
             where: {
                 userId_conversationKey: {
-                    userId: session.user.id,
+                    userId,
                     conversationKey: conversation.conversationKey,
                 },
             },
@@ -72,8 +82,17 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     try {
         const session = await auth();
-        if (!session?.user?.id) {
+        const authState = getSessionAuthState(session);
+        if (authState === "unauthenticated") {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        if (authState === "invalid") {
+            return NextResponse.json(getInvalidSessionApiError(), { status: 401 });
+        }
+
+        const userId = getSessionUserId(session);
+        if (!userId) {
+            return NextResponse.json(getInvalidSessionApiError(), { status: 401 });
         }
 
         const body = await req.json();
@@ -87,7 +106,7 @@ export async function POST(req: NextRequest) {
         await prisma.chatConversation.upsert({
             where: {
                 userId_conversationKey: {
-                    userId: session.user.id,
+                    userId,
                     conversationKey: conversation.conversationKey,
                 },
             },
@@ -99,7 +118,7 @@ export async function POST(req: NextRequest) {
                 messages: Array.isArray(messages) ? messages : [],
             },
             create: {
-                userId: session.user.id,
+                userId,
                 conversationKey: conversation.conversationKey,
                 scope: conversation.scope,
                 owner: conversation.owner,
@@ -119,8 +138,17 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
     try {
         const session = await auth();
-        if (!session?.user?.id) {
+        const authState = getSessionAuthState(session);
+        if (authState === "unauthenticated") {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        }
+        if (authState === "invalid") {
+            return NextResponse.json(getInvalidSessionApiError(), { status: 401 });
+        }
+
+        const userId = getSessionUserId(session);
+        if (!userId) {
+            return NextResponse.json(getInvalidSessionApiError(), { status: 401 });
         }
 
         const { searchParams } = new URL(req.url);
@@ -135,7 +163,7 @@ export async function DELETE(req: NextRequest) {
 
         await prisma.chatConversation.deleteMany({
             where: {
-                userId: session.user.id,
+                userId,
                 conversationKey: conversation.conversationKey,
             },
         });

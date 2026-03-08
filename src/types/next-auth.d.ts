@@ -8,6 +8,7 @@ declare module "next-auth" {
         };
         accessToken?: string;
         oauthScope?: string;
+        error?: "INVALID_SESSION";
     }
 
     interface User {
@@ -22,5 +23,6 @@ declare module "next-auth/jwt" {
         username?: string;
         accessToken?: string;
         oauthScope?: string;
+        error?: "INVALID_SESSION";
     }
 }

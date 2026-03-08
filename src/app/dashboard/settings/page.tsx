@@ -3,11 +3,21 @@ import { redirect } from "next/navigation";
 import { Settings, User, Shield, Bell } from "lucide-react";
 import Image from "next/image";
 import { ComingSoonOverlay } from "@/components/ComingSoonOverlay";
+import { buildInvalidSessionSignOutRedirect, getSessionAuthState } from "@/lib/session-guard";
 
 export default async function SettingsPage() {
     const session = await auth();
+    const authState = getSessionAuthState(session);
 
-    if (!session?.user) {
+    if (authState === "unauthenticated") {
+        redirect("/");
+    }
+    if (authState === "invalid") {
+        redirect(buildInvalidSessionSignOutRedirect());
+    }
+
+    const user = session?.user;
+    if (!user) {
         redirect("/");
     }
 
@@ -26,10 +36,10 @@ export default async function SettingsPage() {
                         {/* Profile Section */}
                         <div className="rounded-3xl bg-zinc-900 border border-white/5 p-8 flex flex-col md:flex-row items-center gap-6">
                             <div className="w-24 h-24 rounded-full overflow-hidden border-2 border-purple-500/20 shadow-xl">
-                                {session.user.image ? (
+                                {user.image ? (
                                     <Image
-                                        src={session.user.image}
-                                        alt={session.user.name || "User"}
+                                        src={user.image}
+                                        alt={user.name || "User"}
                                         width={96}
                                         height={96}
                                         className="object-cover"
@@ -41,8 +51,8 @@ export default async function SettingsPage() {
                                 )}
                             </div>
                             <div className="text-center md:text-left flex-1">
-                                <h2 className="text-2xl font-bold mb-1">{session.user.name}</h2>
-                                <p className="text-zinc-500 mb-4">{session.user.email}</p>
+                                <h2 className="text-2xl font-bold mb-1">{user.name}</h2>
+                                <p className="text-zinc-500 mb-4">{user.email}</p>
                                 <div className="flex flex-wrap justify-center md:justify-start gap-2">
                                     <span className="px-3 py-1 bg-purple-500/10 text-purple-400 border border-purple-500/20 rounded-full text-xs font-medium">
                                         GitHub Connected

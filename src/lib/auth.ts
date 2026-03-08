@@ -1,7 +1,6 @@
 import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import { kv } from "@vercel/kv";
-import { sendWelcomeEmail } from "./emails/mailer";
+import { queueWelcomeEmailDelivery } from "./emails/delivery-service";
 import authConfig from "./auth.config";
 import { prisma } from "./db";
 
@@ -14,13 +13,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     callbacks: {
         ...authConfig.callbacks,
         async signIn({ user, profile }) {
-            if (user?.email) {
-                const hasSentWelcomeEmail = await kv.get(`welcome_email_sent:${user.email}`);
-                if (!hasSentWelcomeEmail) {
-                    await kv.set(`welcome_email_sent:${user.email}`, true);
-                    const username = profile?.login || user.name || user.email.split("@")[0];
-                    sendWelcomeEmail(user.email, username as string).catch(console.error);
-                }
+            if (user?.id && user?.email) {
+                const username = profile?.login || user.name || user.email.split("@")[0];
+                queueWelcomeEmailDelivery({
+                    userId: user.id,
+                    toEmail: user.email,
+                    username: String(username),
+                }).catch((error) => {
+                    console.error("Failed to queue welcome email:", error);
+                });
             }
 
             if (user?.id && profile?.login) {

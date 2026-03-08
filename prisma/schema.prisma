@@ -24,6 +24,7 @@ model User {
   repoScans      RepoScan[]
   recentSearches RecentSearch[]
   conversations  ChatConversation[]
+  emailDeliveries TransactionalEmailDelivery[]
 }
 
 model Account {
@@ -101,4 +102,38 @@ model ChatConversation {
 
   @@unique([userId, conversationKey])
   @@index([userId, updatedAt(sort: Desc)])
+}
+
+enum TransactionalEmailTemplate {
+  WELCOME
+}
+
+enum TransactionalEmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model TransactionalEmailDelivery {
+  id                String                    @id @default(cuid())
+  userId            String
+  template          TransactionalEmailTemplate
+  status            TransactionalEmailStatus  @default(PENDING)
+  toEmail           String
+  templateData      Json?
+  attempts          Int                       @default(0)
+  lastError         String?
+  providerMessageId String?
+  providerEventType String?
+  providerPayload   Json?
+  lastAttemptAt     DateTime?
+  nextRetryAt       DateTime?
+  sentAt            DateTime?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+  user              User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, template])
+  @@index([status, nextRetryAt])
+  @@index([providerMessageId])
 }

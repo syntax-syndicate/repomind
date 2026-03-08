@@ -3,18 +3,28 @@ import { redirect } from "next/navigation";
 import { Star, ExternalLink, GitFork, BookOpen, AlertCircle } from "lucide-react";
 import { getStarredRepos } from "@/lib/github";
 import Link from "next/link";
+import { buildInvalidSessionSignOutRedirect, getSessionAuthState } from "@/lib/session-guard";
 
 export default async function StarredPage() {
     const session = await auth();
+    const authState = getSessionAuthState(session);
 
-    if (!session?.user) {
+    if (authState === "unauthenticated") {
+        redirect("/");
+    }
+    if (authState === "invalid") {
+        redirect(buildInvalidSessionSignOutRedirect());
+    }
+
+    const user = session?.user;
+    if (!user) {
         redirect("/");
     }
 
     const username =
-        (session.user as { username?: string }).username ??
-        session.user.name ??
-        session.user.email?.split('@')[0];
+        (user as { username?: string }).username ??
+        user.name ??
+        user.email?.split('@')[0];
     const starredRepos = username ? await getStarredRepos(username) : [];
 
     return (

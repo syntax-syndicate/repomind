@@ -9,10 +9,9 @@ import {
     ChevronLeft,
     Menu,
     LogOut,
-    Home,
     BookOpen
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -28,10 +27,31 @@ const menuItems = [
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
-    const { data: session } = useSession();
+    const { data: session, status } = useSession();
     const [isCollapsed, setIsCollapsed] = useState(false);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
     const pathname = usePathname();
+    const sessionUserId = (session?.user as { id?: string } | undefined)?.id;
+    const hasInvalidSession = status !== "loading" && Boolean(session?.user) && !sessionUserId;
+
+    useEffect(() => {
+        if (hasInvalidSession) {
+            signOut({ callbackUrl: "/?error=invalid_session" });
+        }
+    }, [hasInvalidSession]);
+
+    if (hasInvalidSession) {
+        return (
+            <div className="min-h-screen bg-black text-white flex items-center justify-center p-6">
+                <div className="max-w-md w-full rounded-2xl border border-red-500/30 bg-red-500/10 p-6 text-center">
+                    <h1 className="text-xl font-semibold mb-2">Session Validation Failed</h1>
+                    <p className="text-zinc-300 text-sm">
+                        Your session is invalid. Redirecting you to sign in again.
+                    </p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="flex h-screen overflow-hidden bg-black text-white">

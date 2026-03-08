@@ -1,5 +1,6 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
+import { getInvalidSessionApiError, getSessionAuthState, getSessionUserId } from "@/lib/session-guard";
 
 type SessionWithAccessToken = {
     accessToken?: string;
@@ -7,9 +8,17 @@ type SessionWithAccessToken = {
 
 export async function GET() {
     const session = await auth();
+    const authState = getSessionAuthState(session);
 
-    if (!session?.user) {
+    if (authState === "unauthenticated") {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (authState === "invalid") {
+        return NextResponse.json(getInvalidSessionApiError(), { status: 401 });
+    }
+
+    if (!getSessionUserId(session)) {
+        return NextResponse.json(getInvalidSessionApiError(), { status: 401 });
     }
 
     const accessToken = (session as SessionWithAccessToken).accessToken;

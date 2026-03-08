@@ -1,35 +1,92 @@
-import { Resend } from 'resend';
-import WelcomeEmail from './welcome';
+import { Resend } from "resend";
+import WelcomeEmail from "./welcome";
 
-// Make sure to add RESEND_API_KEY to .env.local
-let resend: Resend | null = null;
+let resendClient: Resend | null = null;
 
-export async function sendWelcomeEmail(to: string, username: string) {
+export interface SendWelcomeEmailInput {
+    to: string;
+    username: string;
+    idempotencyKey: string;
+}
+
+export interface SendEmailResult {
+    success: boolean;
+    messageId?: string;
+    error?: string;
+}
+
+function getResendClient(): Resend | null {
     if (!process.env.RESEND_API_KEY) {
-        console.warn('RESEND_API_KEY is not set. Skipping welcome email.');
-        return;
+        return null;
     }
 
-    if (!resend) {
-        resend = new Resend(process.env.RESEND_API_KEY);
+    if (!resendClient) {
+        resendClient = new Resend(process.env.RESEND_API_KEY);
+    }
+
+    return resendClient;
+}
+
+function getFromEmail(): string | null {
+    const from = process.env.RESEND_FROM_EMAIL?.trim();
+    return from ? from : null;
+}
+
+export async function sendWelcomeEmail({
+    to,
+    username,
+    idempotencyKey,
+}: SendWelcomeEmailInput): Promise<SendEmailResult> {
+    const client = getResendClient();
+    if (!client) {
+        return {
+            success: false,
+            error: "RESEND_API_KEY is not configured",
+        };
+    }
+
+    const from = getFromEmail();
+    if (!from) {
+        return {
+            success: false,
+            error: "RESEND_FROM_EMAIL is not configured",
+        };
     }
 
     try {
-        const { data, error } = await resend.emails.send({
-            from: 'RepoMind <repoming.agent@gmail.com>', // Change to your verified domain in production E.g 'onboarding@repomind.co'
-            to: [to],
-            subject: 'Welcome to RepoMind!',
-            react: WelcomeEmail({ username }),
-        });
+        const { data, error } = await client.emails.send(
+            {
+                from,
+                to: [to],
+                subject: "Welcome to RepoMind!",
+                react: WelcomeEmail({ username }),
+                tags: [
+                    { name: "template", value: "welcome" },
+                ],
+            },
+            { idempotencyKey }
+        );
 
         if (error) {
-            console.error('Error sending welcome email from Resend:', error);
-            return { success: false, error };
+            return {
+                success: false,
+                error: `${error.name}: ${error.message}`,
+            };
         }
 
-        return { success: true, data };
+        return {
+            success: true,
+            messageId: data?.id,
+        };
     } catch (error) {
-        console.error('Failed to send welcome email:', error);
-        return { success: false, error };
+        const message = error instanceof Error ? error.message : String(error);
+        return {
+            success: false,
+            error: message,
+        };
     }
+}
+
+export function getWebhookVerifierClient(): Resend {
+    return new Resend(process.env.RESEND_API_KEY);
 }

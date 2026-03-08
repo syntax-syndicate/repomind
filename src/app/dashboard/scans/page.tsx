@@ -2,12 +2,22 @@ import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import RecentScans from "@/components/Dashboard/RecentScans";
 import { History } from "lucide-react";
+import { buildInvalidSessionSignOutRedirect, getSessionAuthState, getSessionUserId } from "@/lib/session-guard";
 
 export default async function ScansPage() {
     const session = await auth();
+    const authState = getSessionAuthState(session);
 
-    if (!session?.user) {
+    if (authState === "unauthenticated") {
         redirect("/");
+    }
+    if (authState === "invalid") {
+        redirect(buildInvalidSessionSignOutRedirect());
+    }
+
+    const userId = getSessionUserId(session);
+    if (!userId) {
+        redirect(buildInvalidSessionSignOutRedirect());
     }
 
     return (
@@ -18,7 +28,7 @@ export default async function ScansPage() {
             </div>
 
             <div className="w-full">
-                <RecentScans userId={session.user.id} limit={20} />
+                <RecentScans userId={userId} limit={20} />
             </div>
         </div>
     );

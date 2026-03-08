@@ -234,6 +234,15 @@ We don't just analyze code; we analyze **coders**. RepoMind is the only platform
     # Postgres (Neon)
     DATABASE_URL="your_neon_pooled_connection_url"
     DIRECT_URL="your_neon_direct_connection_url"
+
+    # Resend (Transactional email)
+    RESEND_API_KEY="your_resend_api_key"
+    RESEND_FROM_EMAIL="RepoMind <onboarding@yourdomain.com>"
+    RESEND_WEBHOOK_SECRET="your_resend_webhook_secret"
+
+    # Internal job auth (email retries)
+    EMAIL_RETRY_JOB_SECRET="your_internal_retry_secret"
+    CRON_SECRET="your_vercel_cron_secret"
    ```
 
 4. **Run the development server**

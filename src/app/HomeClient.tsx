@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
 import { ArrowRight, Loader2 } from "lucide-react";
@@ -21,14 +21,17 @@ import PublicStats from "@/components/PublicStats";
 import AuthButton from "@/components/AuthButton";
 import Footer from "@/components/Footer";
 import type { SearchHistoryItem } from "@/lib/services/history-service";
+import { INVALID_SESSION_ERROR_PARAM } from "@/lib/session-guard";
 
 export default function HomeClient() {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { data: session } = useSession();
     const [recentSearches, setRecentSearches] = useState<SearchHistoryItem[]>([]);
+    const hasInvalidSessionError = searchParams.get("error") === INVALID_SESSION_ERROR_PARAM;
 
     useEffect(() => {
         if (session) {
@@ -104,6 +107,12 @@ export default function HomeClient() {
                         Understand any codebase in seconds. Deep dive into repositories,
                         explore profiles, and get instant clarity on complex projects.
                     </p>
+
+                    {hasInvalidSessionError && (
+                        <div className="w-full max-w-md mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                            Your session could not be validated. Please sign in again.
+                        </div>
+                    )}
 
                     <form onSubmit={handleSubmit} className="w-full max-w-md relative group">
                         <div className="conic-border-container flex items-center bg-zinc-900 p-1 rounded-lg">

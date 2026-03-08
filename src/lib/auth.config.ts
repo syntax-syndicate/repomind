@@ -1,5 +1,6 @@
 import type { NextAuthConfig } from "next-auth";
 import GitHub from "next-auth/providers/github";
+import { INVALID_SESSION_ERROR_CODE } from "./session-guard";
 
 const authConfig: NextAuthConfig = {
     providers: [
@@ -19,9 +20,8 @@ const authConfig: NextAuthConfig = {
             return true;
         },
         async jwt({ token, profile, account, user }) {
-            if (user?.id) {
-                token.id = user.id;
-            }
+            const candidateUserId = user?.id ?? token.id ?? token.sub;
+            token.id = typeof candidateUserId === "string" ? candidateUserId : undefined;
             if (profile?.login) {
                 token.username = profile.login;
             }
@@ -31,11 +31,17 @@ const authConfig: NextAuthConfig = {
             if (account?.scope) {
                 token.oauthScope = account.scope;
             }
+            if (!token.id) {
+                token.error = INVALID_SESSION_ERROR_CODE;
+            } else {
+                delete token.error;
+            }
             return token;
         },
         async session({ session, token }) {
-            if (typeof token.id === "string" && session.user) {
-                session.user.id = token.id;
+            const resolvedUserId = typeof token.id === "string" ? token.id : (typeof token.sub === "string" ? token.sub : undefined);
+            if (resolvedUserId && session.user) {
+                session.user.id = resolvedUserId;
             }
             if (typeof token.username === "string" && session.user) {
                 session.user.username = token.username;
@@ -45,6 +51,9 @@ const authConfig: NextAuthConfig = {
             }
             if (typeof token.oauthScope === "string") {
                 session.oauthScope = token.oauthScope;
+            }
+            if (!resolvedUserId) {
+                session.error = INVALID_SESSION_ERROR_CODE;
             }
             return session;
         },

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useSession, signIn } from "next-auth/react";
+import { useSession, signIn, signOut } from "next-auth/react";
 import Image from "next/image";
 import Link from "next/link";
 import { Search, Lock, Globe, BookOpen, ShieldAlert, GitFork, Loader2 } from "lucide-react";
@@ -19,18 +19,25 @@ interface Repo {
 
 export default function MyReposPage() {
     const { data: session } = useSession();
+    const sessionUserId = (session?.user as { id?: string } | undefined)?.id;
+    const hasInvalidSession = Boolean(session?.user && !sessionUserId);
     const [repos, setRepos] = useState<Repo[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
     const [hasPrivateAccess, setHasPrivateAccess] = useState(false);
 
     useEffect(() => {
-        if (!session?.user) return;
+        if (!session?.user || hasInvalidSession) return;
 
         const fetchRepos = async () => {
             try {
                 const res = await fetch("/api/dashboard/user-repos");
                 const data = await res.json();
+
+                if (res.status === 401 && data?.code === "INVALID_SESSION") {
+                    signOut({ callbackUrl: "/?error=invalid_session" });
+                    return;
+                }
 
                 if (data.repos) {
                     setRepos(data.repos);
@@ -44,7 +51,13 @@ export default function MyReposPage() {
         };
 
         fetchRepos();
-    }, [session]);
+    }, [session, hasInvalidSession]);
+
+    useEffect(() => {
+        if (hasInvalidSession) {
+            signOut({ callbackUrl: "/?error=invalid_session" });
+        }
+    }, [hasInvalidSession]);
 
     const handleUnlockPrivateAccess = () => {
         signIn("github", { callbackUrl: "/dashboard/repos" }, { scope: "read:user user:email repo" });
@@ -57,6 +70,15 @@ export default function MyReposPage() {
     const username = (session?.user as { username?: string } | undefined)?.username ?? "github_user";
 
     if (!session?.user) return null;
+
+    if (hasInvalidSession) {
+        return (
+            <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-6">
+                <h2 className="text-lg font-semibold text-white mb-2">Session Validation Failed</h2>
+                <p className="text-sm text-zinc-300">Redirecting you to sign in again...</p>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-8">

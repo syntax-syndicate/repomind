@@ -1,16 +1,26 @@
 import { auth } from "@/lib/auth";
 import { getUserScans } from "@/lib/services/scan-storage";
 import { NextResponse } from "next/server";
+import { getInvalidSessionApiError, getSessionAuthState, getSessionUserId } from "@/lib/session-guard";
 
 export async function GET() {
     const session = await auth();
+    const authState = getSessionAuthState(session);
 
-    if (!session?.user?.id) {
+    if (authState === "unauthenticated") {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (authState === "invalid") {
+        return NextResponse.json(getInvalidSessionApiError(), { status: 401 });
+    }
+
+    const userId = getSessionUserId(session);
+    if (!userId) {
+        return NextResponse.json(getInvalidSessionApiError(), { status: 401 });
     }
 
     try {
-        const scans = await getUserScans(session.user.id);
+        const scans = await getUserScans(userId);
 
         const reposScanned = new Set<string>();
         let issuesFound = 0;
