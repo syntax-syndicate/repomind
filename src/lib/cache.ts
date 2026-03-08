@@ -15,6 +15,7 @@ const TTL_SCAN = 3600; // 1 hour
 interface RepoFullContextCachePayload {
     metadata: unknown;
     languages: unknown;
+    commits: unknown;
     readme: string | null;
 }
 
