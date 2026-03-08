@@ -91,7 +91,7 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
     const [showBadgeModal, setShowBadgeModal] = useState(false);
     const [showSecurityModal, setShowSecurityModal] = useState(false);
     const [showLoginModal, setShowLoginModal] = useState(false);
-    const [deepScansData, setDeepScansData] = useState<{ used: number; total: number; resetsAt: string } | null>(null);
+    const [deepScansData, setDeepScansData] = useState<{ used: number; total: number; resetsAt: string; isUnlimited: boolean } | null>(null);
     const [latestScanId, setLatestScanId] = useState<string | null>(null);
 
     const handleSubmitRef = useRef<((e?: React.FormEvent, overrideText?: string, submitMode?: SubmitMode, scanAiAssist?: boolean) => Promise<void>) | null>(null);
@@ -281,15 +281,26 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
             }
         } catch (error) {
             console.error("Scan failed:", error);
-            toast.error("Security scan failed", {
-                description: error instanceof Error ? error.message : "An error occurred during scanning",
+            const errorMessage = error instanceof Error ? error.message : "An error occurred during scanning";
+            const isDeepScanLimitReached = isDeepScan && /monthly deep scan limit reached/i.test(errorMessage);
+
+            toast.error(isDeepScanLimitReached ? "Deep scan limit exhausted" : "Security scan failed", {
+                description: isDeepScanLimitReached
+                    ? "Your monthly deep scan limit is exhausted. Contact admin pieisnot22by7@gmail.com for more reasonable limits."
+                    : errorMessage,
             });
 
-            const errorMsg: RepoChatMessage = {
-                id: placeholderMessageId,
-                role: "model",
-                content: "I encountered an error while scanning for security vulnerabilities. Please try again.",
-            };
+            const errorMsg: RepoChatMessage = isDeepScanLimitReached
+                ? {
+                    id: placeholderMessageId,
+                    role: "model",
+                    content: "Your deep scan limit is exhausted for this month.\n\nPlease contact admin at **pieisnot22by7@gmail.com** for more reasonable limits.",
+                }
+                : {
+                    id: placeholderMessageId,
+                    role: "model",
+                    content: "I encountered an error while scanning for security vulnerabilities. Please try again.",
+                };
             setMessages((prev) => prev.map((message) =>
                 message.id === placeholderMessageId ? errorMsg : message
             ));

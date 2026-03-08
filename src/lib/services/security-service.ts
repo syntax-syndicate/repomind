@@ -198,11 +198,18 @@ export function filterCodeFiles(
         .slice(0, config.maxFiles);
 }
 
-function selectDependencyFiles(
+export function selectDependencyFiles(
     files: Array<{ path: string; sha?: string }>,
-    config: SecurityScanConfig
+    config: SecurityScanConfig,
+    forceIncludeForAiAssist = false
 ): Array<{ path: string; sha?: string }> {
-    return files.filter(({ path }) => DEPENDENCY_FILES.has(path) && passesPathFilters(path, config));
+    return files.filter(({ path }) => {
+        if (!DEPENDENCY_FILES.has(path)) return false;
+        // Explicit excludes still win.
+        if (config.excludeMatchers.length > 0 && matchesAny(path, config.excludeMatchers)) return false;
+        if (forceIncludeForAiAssist) return true;
+        return passesPathFilters(path, config);
+    });
 }
 
 // ─── Core Service ──────────────────────────────────────────────────────────────
@@ -244,7 +251,7 @@ export async function runSecurityScan(
 
     const riskSorted = [...files].sort((a, b) => scorePathRisk(b.path) - scorePathRisk(a.path));
     const codeFiles = filterCodeFiles(riskSorted, config);
-    const dependencyFiles = selectDependencyFiles(riskSorted, config);
+    const dependencyFiles = selectDependencyFiles(riskSorted, config, config.aiEnabled);
 
     const selectedFiles = [...codeFiles];
     for (const file of dependencyFiles) {

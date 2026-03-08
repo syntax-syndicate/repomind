@@ -12,6 +12,7 @@
 
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
+import { isAdminUser } from "@/lib/admin-auth";
 import { kv } from "@vercel/kv";
 import {
     getProfile,
@@ -406,6 +407,7 @@ export interface SecurityScanOptions {
 
 type SecurityScanCoreResult = Awaited<ReturnType<typeof runSecurityScan>>;
 type SecurityScanResult = SecurityScanCoreResult & { scanId?: string };
+const DEEP_SCAN_MONTHLY_LIMIT = 5;
 
 export async function scanRepositoryVulnerabilities(
     owner: string,
@@ -417,19 +419,22 @@ export async function scanRepositoryVulnerabilities(
     const filePaths = files.map(f => f.path);
 
     const session = await auth();
+    const isAdmin = isAdminUser(session);
     let limitKey = "";
 
     if (config.analysisProfile === "deep") {
         if (!session?.user?.id) {
             throw new Error("Authentication required for Deep Scan.");
         }
-        const now = new Date();
-        const monthKey = `${now.getFullYear()}_${now.getMonth() + 1}`;
-        limitKey = `user:${session.user.id}:deep_scans:${monthKey}`;
+        if (!isAdmin) {
+            const now = new Date();
+            const monthKey = `${now.getFullYear()}_${now.getMonth() + 1}`;
+            limitKey = `user:${session.user.id}:deep_scans:${monthKey}`;
 
-        const currentScans = await kv.get<number>(limitKey) || 0;
-        if (currentScans >= 5) {
-            throw new Error("Monthly Deep Scan limit reached (5/5).");
+            const currentScans = await kv.get<number>(limitKey) || 0;
+            if (currentScans >= DEEP_SCAN_MONTHLY_LIMIT) {
+                throw new Error(`Monthly Deep Scan limit reached (${DEEP_SCAN_MONTHLY_LIMIT}/${DEEP_SCAN_MONTHLY_LIMIT}).`);
+            }
         }
     }
 
@@ -510,16 +515,20 @@ export async function scanRepositoryVulnerabilities(
     };
 }
 
-export async function getRemainingDeepScans(): Promise<{ used: number; total: number; resetsAt: string }> {
+export async function getRemainingDeepScans(): Promise<{ used: number; total: number; resetsAt: string; isUnlimited: boolean }> {
     const session = await auth();
-    const total = 5;
+    const total = DEEP_SCAN_MONTHLY_LIMIT;
     const now = new Date();
     // Default to end of current month
     const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const resetsAt = nextMonth.toISOString();
 
     if (!session?.user?.id) {
-        return { used: 0, total, resetsAt };
+        return { used: 0, total, resetsAt, isUnlimited: false };
+    }
+
+    if (isAdminUser(session)) {
+        return { used: 0, total, resetsAt, isUnlimited: true };
     }
 
     const monthKey = `${now.getFullYear()}_${now.getMonth() + 1}`;
@@ -527,7 +536,7 @@ export async function getRemainingDeepScans(): Promise<{ used: number; total: nu
 
     const currentScans = await kv.get<number>(limitKey) || 0;
 
-    return { used: currentScans, total, resetsAt };
+    return { used: currentScans, total, resetsAt, isUnlimited: false };
 }
 
 export async function getLatestRepoScanId(owner: string, repo: string): Promise<string | null> {

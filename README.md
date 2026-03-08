@@ -125,27 +125,40 @@ We are constantly improving RepoMind. Check out our **[CHANGELOG.md](CHANGELOG.m
 
 ```mermaid
 graph TD
-    Start[User Requests Scan] --> Select[Select Code Files]
-    Select --> Fetch[Fetch Content]
-    
-    subgraph "Pattern Engine (Fast)"
-        Fetch --> Secrets[Detect Secrets]
-        Fetch --> Patterns[Code Patterns]
-        Fetch --> Deps[Check Dependencies]
+    Start[Start Scan] --> Mode[Choose Quick or Deep + Optional AI Assist]
+    Mode --> Deep{Deep Scan?}
+
+    Deep -->|Yes| Auth[Require Auth + Check Monthly Deep Quota]
+    Deep -->|No| Build
+    Auth --> Build[Build Scan Config + Cache Identity]
+
+    Build --> Cache{Cache Hit for repo revision + config?}
+    Cache -->|Yes| Cached[Load Cached Result + Mark fromCache]
+    Cache -->|No| Collect[Collect Scoped Code + Dependency Files]
+
+    Collect --> Deterministic[Deterministic Engine v2]
+    subgraph "Deterministic Engine v2"
+        Deterministic --> AST[AST + Taint Flow Checks]
+        Deterministic --> Secret[Secret Detection]
+        Deterministic --> Config[Config Misconfiguration Rules]
+        Deterministic --> Dep[Version-Aware Dependency Checks]
     end
-    
-    subgraph "AI Engine (Deep)"
-        Fetch -->|High Risk Files| AI[Gemini 3 Analysis]
-        AI -->|Context Aware| AIFindings[AI Findings]
-    end
-    
-    Secrets --> Dedup[Deduplicate & Aggregate]
-    Patterns --> Dedup
-    Deps --> Dedup
-    AIFindings --> Dedup
-    
-    Dedup --> Report[Generate Security Report]
+
+    AST --> Rank
+    Secret --> Rank
+    Config --> Rank
+    Dep --> Rank
+    Rank[Confidence Score + Fingerprint Dedupe] --> AIToggle{AI Assist Enabled?}
+
+    AIToggle -->|No| Finalize
+    AIToggle -->|Yes| AIPass[Redact Sensitive Values + AI Validation]
+    AIPass --> Merge[Merge AI + Deterministic Findings]
+    Merge --> Finalize[Save Scan + Render Report]
+    Cached --> Finalize
 ```
+
+- **Quick Scan**: Deterministic-first checks optimized for speed (up to 20 files).
+- **Deep Scan**: Broader deterministic analysis (up to 60 files), with optional AI assistance.
 
 ###  Mobile-First Experience
 - **Analyze on the Go**: The only advanced code analysis tool optimized for mobile browsers.

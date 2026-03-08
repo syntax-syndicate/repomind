@@ -7,6 +7,7 @@ interface DeepScansData {
     used: number;
     total: number;
     resetsAt: string;
+    isUnlimited: boolean;
 }
 
 interface SecurityScanModalProps {
@@ -28,7 +29,7 @@ export function SecurityScanModal({
     onRunQuickScan,
     onRunDeepScan,
 }: SecurityScanModalProps) {
-    const [scanAiAssist, setScanAiAssist] = useState(false);
+    const [scanAiAssist, setScanAiAssist] = useState(true);
 
     if (!isOpen) {
         return null;
@@ -39,7 +40,7 @@ export function SecurityScanModal({
             <div className="bg-zinc-900 border border-white/10 rounded-2xl w-full max-w-md overflow-hidden flex flex-col relative shadow-2xl">
                 <button
                     onClick={() => {
-                        setScanAiAssist(false);
+                        setScanAiAssist(true);
                         onClose();
                     }}
                     className="absolute top-4 right-4 p-2 text-zinc-400 hover:text-white hover:bg-white/10 rounded-lg transition-colors z-10"
@@ -57,7 +58,7 @@ export function SecurityScanModal({
                         <button
                             onClick={() => {
                                 onRunQuickScan(scanAiAssist);
-                                setScanAiAssist(false);
+                                setScanAiAssist(true);
                             }}
                             className="w-full bg-zinc-800 hover:bg-zinc-700 border border-white/5 rounded-xl p-4 text-left transition-all group"
                         >
@@ -73,7 +74,7 @@ export function SecurityScanModal({
                         <button
                             onClick={() => {
                                 onRunDeepScan(scanAiAssist);
-                                setScanAiAssist(false);
+                                setScanAiAssist(true);
                             }}
                             className="w-full bg-zinc-800 hover:bg-zinc-700 border border-red-500/20 rounded-xl p-4 text-left transition-all group"
                         >
@@ -86,7 +87,9 @@ export function SecurityScanModal({
                                     <span className="text-xs font-mono bg-zinc-950 px-2 py-0.5 rounded text-zinc-400">~ 2 min</span>
                                     {isAuthenticated && deepScansData && (
                                         <span className="text-[10px] text-zinc-500 mt-1">
-                                            {deepScansData.total - deepScansData.used} / {deepScansData.total} remaining
+                                            {deepScansData.isUnlimited
+                                                ? "Unlimited (Admin)"
+                                                : `${deepScansData.total - deepScansData.used} / ${deepScansData.total} remaining`}
                                         </span>
                                     )}
                                 </div>
@@ -96,16 +99,24 @@ export function SecurityScanModal({
                             </p>
                         </button>
 
-                        <label className="flex items-start gap-3 p-3 rounded-xl border border-white/10 bg-zinc-950/60">
+                        <label className="flex items-start gap-3 p-3 rounded-xl border border-red-500/20 bg-zinc-950/60">
                             <input
                                 type="checkbox"
                                 checked={scanAiAssist}
                                 onChange={(event) => setScanAiAssist(event.target.checked)}
                                 className="mt-0.5 h-4 w-4 rounded border-zinc-700 bg-zinc-900 text-red-500 focus:ring-red-500/60"
                             />
-                            <span className="text-xs text-zinc-400 leading-relaxed">
-                                Enable AI assist (optional): sends selected code snippets to third-party model APIs for additional review.
-                            </span>
+                            <div className="min-w-0">
+                                <div className="flex items-center gap-2 mb-1">
+                                    <span className="text-xs font-semibold text-zinc-200">Enable AI assist</span>
+                                    <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-red-500/20 text-red-300 border border-red-500/30">
+                                        Recommended
+                                    </span>
+                                </div>
+                                <span className="text-xs text-zinc-400 leading-relaxed">
+                                    Sends selected code snippets to third-party model APIs for additional review.
+                                </span>
+                            </div>
                         </label>
 
                         {latestScanId && (

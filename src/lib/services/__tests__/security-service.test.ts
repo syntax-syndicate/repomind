@@ -8,6 +8,7 @@ import {
     deduplicateFindings,
     buildScanConfig,
     filterCodeFiles,
+    selectDependencyFiles,
 } from "@/lib/services/security-service";
 import type { SecurityFinding } from "@/lib/security-scanner";
 
@@ -189,5 +190,24 @@ describe("filterCodeFiles", () => {
 
     it("handles empty file list", () => {
         expect(filterCodeFiles([], config)).toEqual([]);
+    });
+});
+
+describe("selectDependencyFiles", () => {
+    it("includes dependency files during AI-assisted scans even when selectedPaths are narrow", () => {
+        const files = [
+            { path: "src/app.ts" },
+            { path: "package.json" },
+            { path: "package-lock.json" },
+        ];
+        const config = buildScanConfig({
+            analysisProfile: "quick",
+            aiAssist: "on",
+            selectedPaths: ["src/app.ts"],
+        });
+
+        const deps = selectDependencyFiles(files, config, true);
+        expect(deps.some((file) => file.path === "package.json")).toBe(true);
+        expect(deps.some((file) => file.path === "package-lock.json")).toBe(true);
     });
 });
