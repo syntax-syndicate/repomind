@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { prisma } from "@/lib/db";
 import type { SecurityFinding, ScanSummary } from "@/lib/security-scanner";
 
 export interface StoredScan {
@@ -12,7 +12,27 @@ export interface StoredScan {
     userId?: string;
 }
 
-const getRepoScansListKey = (owner: string, repo: string) => `repo:${owner}:${repo}:scans`;
+function mapStoredScan(record: {
+    id: string;
+    owner: string;
+    repo: string;
+    timestamp: bigint;
+    depth: string;
+    summary: unknown;
+    findings: unknown;
+    userId: string | null;
+}): StoredScan {
+    return {
+        id: record.id,
+        owner: record.owner,
+        repo: record.repo,
+        timestamp: Number(record.timestamp),
+        depth: record.depth === "deep" ? "deep" : "quick",
+        summary: record.summary as ScanSummary,
+        findings: record.findings as SecurityFinding[],
+        userId: record.userId ?? undefined,
+    };
+}
 
 export async function saveScanResult(
     owner: string,
@@ -36,29 +56,34 @@ export async function saveScanResult(
         ...data,
     };
 
-    // Save the record
-    await kv.set(`scan:${id}`, record);
-    // Update the latest pointer
-    await kv.set(`latest_scan:${owner}:${repo}`, id);
-    // Keep a short scan history list per repository to support report comparisons
-    await kv.lpush(getRepoScansListKey(owner, repo), id);
-    await kv.ltrim(getRepoScansListKey(owner, repo), 0, 199);
-
-    if (userId) {
-        // Add to user's recent scans list (keep only last 50 for now)
-        await kv.lpush(`user:${userId}:scans`, id);
-        await kv.ltrim(`user:${userId}:scans`, 0, 49);
-    }
+    await prisma.repoScan.create({
+        data: {
+            id: record.id,
+            owner: record.owner,
+            repo: record.repo,
+            timestamp: BigInt(record.timestamp),
+            depth: record.depth,
+            summary: record.summary as object,
+            findings: record.findings as unknown as object[],
+            userId: record.userId ?? null,
+        },
+    });
 
     return id;
 }
 
 export async function getScanResult(id: string): Promise<StoredScan | null> {
-    return await kv.get<StoredScan>(`scan:${id}`);
+    const record = await prisma.repoScan.findUnique({ where: { id } });
+    return record ? mapStoredScan(record) : null;
 }
 
 export async function getLatestScanId(owner: string, repo: string): Promise<string | null> {
-    return await kv.get<string>(`latest_scan:${owner}:${repo}`);
+    const latest = await prisma.repoScan.findFirst({
+        where: { owner, repo },
+        orderBy: { timestamp: "desc" },
+        select: { id: true },
+    });
+    return latest?.id ?? null;
 }
 
 export async function getPreviousScan(
@@ -75,43 +100,24 @@ export async function getPreviousScan(
         resolvedTimestamp = current.timestamp;
     }
 
-    const repoScanIds = await kv.lrange<string>(getRepoScansListKey(owner, repo), 0, 50);
-    if (repoScanIds.length > 0) {
-        const candidateScans = await Promise.all(
-            repoScanIds
-                .filter((id) => id !== currentScanId)
-                .map((id) => getScanResult(id))
-        );
+    const previous = await prisma.repoScan.findFirst({
+        where: {
+            owner,
+            repo,
+            id: { not: currentScanId },
+            timestamp: { lt: BigInt(resolvedTimestamp) },
+        },
+        orderBy: { timestamp: "desc" },
+    });
 
-        const previous = candidateScans
-            .filter((scan): scan is StoredScan => Boolean(scan))
-            .filter((scan) => scan.owner === owner && scan.repo === repo && scan.timestamp < resolvedTimestamp)
-            .sort((a, b) => b.timestamp - a.timestamp)[0];
-
-        if (previous) {
-            return previous;
-        }
-    }
-
-    // Fallback for older scans created before repo-level list tracking existed.
-    const scanKeys = await kv.keys("scan:*");
-    if (scanKeys.length === 0) return null;
-
-    const allScans = await Promise.all(
-        scanKeys.map((key) => kv.get<StoredScan>(key))
-    );
-
-    return allScans
-        .filter((scan): scan is StoredScan => Boolean(scan))
-        .filter((scan) => scan.id !== currentScanId)
-        .filter((scan) => scan.owner === owner && scan.repo === repo)
-        .filter((scan) => scan.timestamp < resolvedTimestamp)
-        .sort((a, b) => b.timestamp - a.timestamp)[0] ?? null;
+    return previous ? mapStoredScan(previous) : null;
 }
 
 export async function getUserScans(userId: string, limit?: number): Promise<StoredScan[]> {
-    const end = typeof limit === "number" && limit > 0 ? limit - 1 : -1;
-    const scanIds = await kv.lrange(`user:${userId}:scans`, 0, end);
-    const scans = await Promise.all(scanIds.map(id => getScanResult(id)));
-    return scans.filter((s): s is StoredScan => s !== null);
+    const scans = await prisma.repoScan.findMany({
+        where: { userId },
+        orderBy: { timestamp: "desc" },
+        ...(typeof limit === "number" && limit > 0 ? { take: limit } : {}),
+    });
+    return scans.map(mapStoredScan);
 }

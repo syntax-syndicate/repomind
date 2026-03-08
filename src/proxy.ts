@@ -1,6 +1,9 @@
-import { auth } from "@/lib/auth";
+import NextAuth from "next-auth";
+import authConfig from "@/lib/auth.config";
 import { NextResponse } from 'next/server';
 import { getCanonicalSiteUrl } from "@/lib/site-url";
+
+const { auth } = NextAuth(authConfig);
 
 export const proxy = auth((req) => {
     const { nextUrl } = req;

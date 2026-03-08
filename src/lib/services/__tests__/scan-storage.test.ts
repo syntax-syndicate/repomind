@@ -1,20 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StoredScan } from "@/lib/services/scan-storage";
 
-const { lrangeMock, getMock, keysMock } = vi.hoisted(() => ({
-    lrangeMock: vi.fn(),
-    getMock: vi.fn(),
-    keysMock: vi.fn(),
+const { findUniqueMock, findFirstMock } = vi.hoisted(() => ({
+    findUniqueMock: vi.fn(),
+    findFirstMock: vi.fn(),
 }));
 
-vi.mock("@vercel/kv", () => ({
-    kv: {
-        lrange: lrangeMock,
-        get: getMock,
-        keys: keysMock,
-        set: vi.fn(),
-        lpush: vi.fn(),
-        ltrim: vi.fn(),
+vi.mock("@/lib/db", () => ({
+    prisma: {
+        repoScan: {
+            findUnique: findUniqueMock,
+            findFirst: findFirstMock,
+        },
     },
 }));
 
@@ -42,37 +39,25 @@ function buildScan(overrides: Partial<StoredScan>): StoredScan {
 
 describe("getPreviousScan", () => {
     beforeEach(() => {
-        lrangeMock.mockReset();
-        getMock.mockReset();
-        keysMock.mockReset();
+        findUniqueMock.mockReset();
+        findFirstMock.mockReset();
     });
 
-    it("returns previous scan from repo index list when available", async () => {
-        lrangeMock.mockResolvedValue(["current", "older-a", "older-b"]);
-
-        const store: Record<string, StoredScan> = {
-            "scan:older-a": buildScan({ id: "older-a", timestamp: 1700 }),
-            "scan:older-b": buildScan({ id: "older-b", timestamp: 1600 }),
-        };
-
-        getMock.mockImplementation(async (key: string) => store[key] ?? null);
+    it("returns previous scan from repository history", async () => {
+        findFirstMock.mockResolvedValue(buildScan({ id: "older-a", timestamp: 1700 }));
 
         const result = await getPreviousScan("acme", "widget", "current", 1800);
         expect(result?.id).toBe("older-a");
+        expect(findFirstMock).toHaveBeenCalledOnce();
     });
 
-    it("falls back to full scan key search when repo index has no entries", async () => {
-        lrangeMock.mockResolvedValue([]);
-        keysMock.mockResolvedValue(["scan:x", "scan:y", "scan:z"]);
+    it("loads current scan when timestamp is omitted", async () => {
+        findUniqueMock.mockResolvedValue(buildScan({ id: "current", timestamp: 2000 }));
+        findFirstMock.mockResolvedValue(buildScan({ id: "older-b", timestamp: 1700 }));
 
-        const store: Record<string, StoredScan> = {
-            "scan:x": buildScan({ id: "x", owner: "acme", repo: "widget", timestamp: 1300 }),
-            "scan:y": buildScan({ id: "y", owner: "acme", repo: "widget", timestamp: 1900 }),
-            "scan:z": buildScan({ id: "z", owner: "other", repo: "repo", timestamp: 1500 }),
-        };
-        getMock.mockImplementation(async (key: string) => store[key] ?? null);
-
-        const result = await getPreviousScan("acme", "widget", "current", 2000);
-        expect(result?.id).toBe("y");
+        const result = await getPreviousScan("acme", "widget", "current");
+        expect(result?.id).toBe("older-b");
+        expect(findUniqueMock).toHaveBeenCalledOnce();
+        expect(findFirstMock).toHaveBeenCalledOnce();
     });
 });

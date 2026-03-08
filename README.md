@@ -225,6 +225,15 @@ We don't just analyze code; we analyze **coders**. RepoMind is the only platform
     KV_REST_API_URL="your_kv_rest_api_url"
     KV_URL="your_kv_url"
     REDIS_URL="your_redis_url"
+
+    # NextAuth
+    AUTH_GITHUB_ID="your_github_client_id"
+    AUTH_GITHUB_SECRET="your_github_client_secret"
+    AUTH_SECRET="your_random_32_plus_char_secret"
+
+    # Postgres (Neon)
+    DATABASE_URL="your_neon_pooled_connection_url"
+    DIRECT_URL="your_neon_direct_connection_url"
    ```
 
 4. **Run the development server**
@@ -308,7 +317,7 @@ RepoMind includes a powerful DevTools panel accessible via the wrench icon:
 
 - **GitHub Token**: Stored locally in your browser, never sent to our servers
 - **API Keys**: Environment variables, not exposed to client
-- **No Data Storage**: Conversations are ephemeral (optional KV cache for performance)
+- **Data Storage**: User auth and core history are stored in Postgres; cache and counters are stored in KV
 - **Server-Side Processing**: AI analysis happens on Vercel Edge, not client-side
 - **Open Source**: Audit the code yourself
 

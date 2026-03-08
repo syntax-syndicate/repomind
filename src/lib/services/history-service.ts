@@ -1,4 +1,4 @@
-import { kv } from "@vercel/kv";
+import { prisma } from "@/lib/db";
 
 export interface SearchHistoryItem {
     query: string;
@@ -7,37 +7,52 @@ export interface SearchHistoryItem {
 }
 
 export async function recordSearch(userId: string, query: string, type: "profile" | "repo") {
-    const key = `user:${userId}:recent_searches`;
+    const now = Date.now();
+    await prisma.recentSearch.upsert({
+        where: {
+            userId_query: {
+                userId,
+                query,
+            },
+        },
+        update: {
+            type,
+            timestamp: BigInt(now),
+        },
+        create: {
+            userId,
+            query,
+            type,
+            timestamp: BigInt(now),
+        },
+    });
 
-    // Get existing searches to avoid duplicates
-    const existingSearches = await kv.lrange<SearchHistoryItem>(key, 0, 50);
+    const staleRows = await prisma.recentSearch.findMany({
+        where: { userId },
+        orderBy: { timestamp: "desc" },
+        skip: 10,
+        select: { id: true },
+    });
 
-    // Remove if already exists (to move it to top)
-    const filteredSearches = existingSearches.filter(item => item.query !== query);
-
-    const newItem: SearchHistoryItem = {
-        query,
-        type,
-        timestamp: Date.now()
-    };
-
-    // Clear and refill list (KV doesn't have a direct "remove and push to front" for complex objects easily without LREM which works on exact values)
-    // For simplicity with KV, we can just LPUSH and then filter unique ones when retrieving, or do this:
-
-    await kv.del(key);
-    const newItems = [newItem, ...filteredSearches].slice(0, 10); // Keep last 10
-
-    // Use pipeline or loop to lpush
-    if (newItems.length > 0) {
-        // Reverse because LPUSH adds to front, so we want the newest to be added last if we were doing it one by one, 
-        // but here we can just push them all. Actually LPUSH [a, b, c] results in [c, b, a].
-        // So we should reverse our array.
-        await kv.lpush(key, ...newItems.reverse());
+    if (staleRows.length > 0) {
+        await prisma.recentSearch.deleteMany({
+            where: {
+                id: { in: staleRows.map((row) => row.id) },
+            },
+        });
     }
 }
 
 export async function getRecentSearches(userId: string, limit: number = 3): Promise<SearchHistoryItem[]> {
-    const key = `user:${userId}:recent_searches`;
-    const searches = await kv.lrange<SearchHistoryItem>(key, 0, limit - 1);
-    return searches;
+    const rows = await prisma.recentSearch.findMany({
+        where: { userId },
+        orderBy: { timestamp: "desc" },
+        take: Math.max(limit, 0),
+    });
+
+    return rows.map((row) => ({
+        query: row.query,
+        type: row.type === "repo" ? "repo" : "profile",
+        timestamp: Number(row.timestamp),
+    }));
 }

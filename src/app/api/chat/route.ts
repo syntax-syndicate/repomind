@@ -1,6 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { kv } from '@vercel/kv';
+import { prisma } from '@/lib/db';
+
+type ConversationParams =
+    | { scope: "repo"; conversationKey: string; owner: string; repo: string; username: null }
+    | { scope: "profile"; conversationKey: string; owner: null; repo: null; username: string };
+
+function resolveConversation(
+    owner: string | null,
+    repo: string | null,
+    username: string | null
+): ConversationParams | null {
+    if (owner && repo) {
+        return {
+            scope: "repo",
+            conversationKey: `repo:${owner}:${repo}`,
+            owner,
+            repo,
+            username: null,
+        };
+    }
+
+    if (username) {
+        return {
+            scope: "profile",
+            conversationKey: `profile:${username}`,
+            owner: null,
+            repo: null,
+            username,
+        };
+    }
+
+    return null;
+}
 
 export async function GET(req: NextRequest) {
     try {
@@ -14,16 +46,22 @@ export async function GET(req: NextRequest) {
         const repo = searchParams.get('repo');
         const username = searchParams.get('username');
 
-        let key: string;
-        if (owner && repo) {
-            key = `chat:${session.user.id}:${owner}:${repo}`;
-        } else if (username) {
-            key = `chat:${session.user.id}:profile:${username}`;
-        } else {
+        const conversation = resolveConversation(owner, repo, username);
+        if (!conversation) {
             return NextResponse.json({ error: 'Missing repository or profile parameters' }, { status: 400 });
         }
 
-        const messages = await kv.get(key) || [];
+        const record = await prisma.chatConversation.findUnique({
+            where: {
+                userId_conversationKey: {
+                    userId: session.user.id,
+                    conversationKey: conversation.conversationKey,
+                },
+            },
+            select: { messages: true },
+        });
+
+        const messages = Array.isArray(record?.messages) ? record.messages : [];
         return NextResponse.json({ messages });
     } catch (error) {
         console.error('Error fetching chat history:', error);
@@ -41,18 +79,35 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
         const { owner, repo, username, messages } = body;
 
-        let key: string;
-        if (owner && repo) {
-            key = `chat:${session.user.id}:${owner}:${repo}`;
-        } else if (username) {
-            key = `chat:${session.user.id}:profile:${username}`;
-        } else {
+        const conversation = resolveConversation(owner ?? null, repo ?? null, username ?? null);
+        if (!conversation) {
             return NextResponse.json({ error: 'Missing repository or profile parameters' }, { status: 400 });
         }
 
-        // Store messages in KV, set an expiration if needed, e.g., 30 days
-        // await kv.set(key, messages, { ex: 60 * 60 * 24 * 30 });
-        await kv.set(key, messages);
+        await prisma.chatConversation.upsert({
+            where: {
+                userId_conversationKey: {
+                    userId: session.user.id,
+                    conversationKey: conversation.conversationKey,
+                },
+            },
+            update: {
+                scope: conversation.scope,
+                owner: conversation.owner,
+                repo: conversation.repo,
+                username: conversation.username,
+                messages: Array.isArray(messages) ? messages : [],
+            },
+            create: {
+                userId: session.user.id,
+                conversationKey: conversation.conversationKey,
+                scope: conversation.scope,
+                owner: conversation.owner,
+                repo: conversation.repo,
+                username: conversation.username,
+                messages: Array.isArray(messages) ? messages : [],
+            },
+        });
 
         return NextResponse.json({ success: true });
     } catch (error) {
@@ -73,16 +128,17 @@ export async function DELETE(req: NextRequest) {
         const repo = searchParams.get('repo');
         const username = searchParams.get('username');
 
-        let key: string;
-        if (owner && repo) {
-            key = `chat:${session.user.id}:${owner}:${repo}`;
-        } else if (username) {
-            key = `chat:${session.user.id}:profile:${username}`;
-        } else {
+        const conversation = resolveConversation(owner, repo, username);
+        if (!conversation) {
             return NextResponse.json({ error: 'Missing repository or profile parameters' }, { status: 400 });
         }
 
-        await kv.del(key);
+        await prisma.chatConversation.deleteMany({
+            where: {
+                userId: session.user.id,
+                conversationKey: conversation.conversationKey,
+            },
+        });
         return NextResponse.json({ success: true });
     } catch (error) {
         console.error('Error deleting chat history:', error);
