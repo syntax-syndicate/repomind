@@ -226,6 +226,9 @@ export function ReportContent({
         if (!activeFalsePositiveKey) return null;
         return findingViews.find((view) => `${view.fingerprint}:${view.index}` === activeFalsePositiveKey) ?? null;
     }, [activeFalsePositiveKey, findingViews]);
+    const isActiveFalsePositivePending = activeFalsePositiveKey
+        ? Boolean(pendingFalsePositives[activeFalsePositiveKey])
+        : false;
 
     const closeFalsePositiveModal = () => {
         setActiveFalsePositiveKey(null);
@@ -560,7 +563,7 @@ export function ReportContent({
                     <div
                         className="absolute inset-0 bg-black/80 backdrop-blur-sm"
                         onClick={() => {
-                            if (!pendingFalsePositives[activeFalsePositiveKey]) {
+                            if (!isActiveFalsePositivePending) {
                                 closeFalsePositiveModal();
                             }
                         }}
@@ -629,18 +632,18 @@ export function ReportContent({
                                 <button
                                     type="button"
                                     onClick={closeFalsePositiveModal}
-                                    disabled={Boolean(pendingFalsePositives[activeFalsePositiveKey])}
+                                    disabled={isActiveFalsePositivePending}
                                     className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     Cancel
                                 </button>
                                 <button
                                     type="submit"
-                                    disabled={Boolean(pendingFalsePositives[activeFalsePositiveKey]) || falsePositiveDetails.trim().length === 0}
+                                    disabled={isActiveFalsePositivePending || falsePositiveDetails.trim().length === 0}
                                     className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
                                 >
                                     <ShieldAlert className="w-4 h-4" />
-                                    {pendingFalsePositives[activeFalsePositiveKey] ? "Submitting..." : "Submit False Positive"}
+                                    {isActiveFalsePositivePending ? "Submitting..." : "Submit False Positive"}
                                 </button>
                             </div>
                         </form>
