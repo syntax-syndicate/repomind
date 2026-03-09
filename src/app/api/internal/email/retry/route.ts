@@ -2,10 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { processTransactionalEmailRetries } from "@/lib/emails/delivery-service";
 
 function getAllowedSecrets(): string[] {
-    const secrets = [
-        process.env.EMAIL_RETRY_JOB_SECRET?.trim(),
-        process.env.CRON_SECRET?.trim(),
-    ].filter((value): value is string => Boolean(value));
+    const secrets = [process.env.EMAIL_RETRY_JOB_SECRET?.trim()].filter(
+        (value): value is string => Boolean(value)
+    );
 
     return Array.from(new Set(secrets));
 }
@@ -26,10 +25,7 @@ function isAuthorized(request: NextRequest, allowedSecrets: string[]): boolean {
 async function handleRetry(request: NextRequest) {
     const allowedSecrets = getAllowedSecrets();
     if (allowedSecrets.length === 0) {
-        return NextResponse.json(
-            { error: "EMAIL_RETRY_JOB_SECRET or CRON_SECRET is not configured" },
-            { status: 500 }
-        );
+        return NextResponse.json({ error: "EMAIL_RETRY_JOB_SECRET is not configured" }, { status: 500 });
     }
 
     if (!isAuthorized(request, allowedSecrets)) {

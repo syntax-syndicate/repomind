@@ -255,7 +255,6 @@ We don't just analyze code; we analyze **coders**. RepoMind is the only platform
 
     # Internal job auth (email retries)
     EMAIL_RETRY_JOB_SECRET="your_internal_retry_secret"
-    CRON_SECRET="your_vercel_cron_secret"
    ```
 
 4. **Run the development server**
