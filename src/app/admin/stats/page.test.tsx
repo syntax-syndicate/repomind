@@ -99,5 +99,6 @@ describe("AdminStatsPage", () => {
         expect(view.props.data).toEqual(data);
         expect(view.props.country).toBe("IN");
         expect(view.props.isMobile).toBe(true);
+        expect(view.props.currentUsername).toBe("403errors");
     });
 });

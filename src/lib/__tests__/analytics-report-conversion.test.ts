@@ -57,6 +57,10 @@ vi.mock("@vercel/kv", () => ({
                     localCalls.push({ type: "incr", key });
                     return pipeline;
                 },
+                del: (key: string) => {
+                    localCalls.push({ type: "del", key });
+                    return pipeline;
+                },
                 lpush: () => pipeline,
                 ltrim: () => pipeline,
                 sadd: () => pipeline,
@@ -93,7 +97,7 @@ vi.mock("@/lib/db", () => ({
     },
 }));
 
-import { getAnalyticsData, trackReportConversionEvent } from "@/lib/analytics";
+import { getAnalyticsData, resetReportConversionMetrics, trackReportConversionEvent } from "@/lib/analytics";
 
 describe("report conversion analytics", () => {
     beforeEach(() => {
@@ -134,6 +138,30 @@ describe("report conversion analytics", () => {
         expect(incrementedKeys).toContain("stats:report:report_fix_chat_started");
         expect(incrementedKeys.some((key) => key.startsWith("stats:report:report_fix_chat_started:"))).toBe(true);
         expect(incrementedKeys).toContain("stats:report:scan:scan_123:report_fix_chat_started");
+    });
+
+    it("skips report conversion for the configured admin", async () => {
+        process.env.ADMIN_GITHUB_USERNAME = "403errors";
+
+        await trackReportConversionEvent("report_fix_chat_started", "scan_123", {
+            actorUsername: "403errors",
+        });
+
+        expect(pipelineCalls.filter((c) => c.type === "incr")).toEqual([]);
+    });
+
+    it("resets report funnel metrics", async () => {
+        keysMock.mockResolvedValue([
+            "stats:report:report_viewed_shared",
+            "stats:report:report_fix_chat_started:2026-03-09",
+        ]);
+
+        await resetReportConversionMetrics();
+
+        expect(pipelineCalls.filter((c) => c.type === "del").map((c) => c.key)).toEqual([
+            "stats:report:report_viewed_shared",
+            "stats:report:report_fix_chat_started:2026-03-09",
+        ]);
     });
 
     it("returns report funnel metrics in analytics payload", async () => {

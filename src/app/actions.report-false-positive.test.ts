@@ -91,14 +91,20 @@ describe("submitReportFalsePositive", () => {
             findingIndex: 0,
             findingFingerprint: "code|src/api.ts|potential sql injection||user input reaches query sink.",
             isSharedView: false,
+            reason: "FALSE_DATAFLOW",
+            details: "The query builder parameterizes this path before execution.",
         });
 
         expect(createFalsePositiveSubmissionMock).toHaveBeenCalledWith(expect.objectContaining({
             scanId: "scan_1",
             submittedByUserId: "user_1",
             isSharedView: false,
+            reason: "FALSE_DATAFLOW",
+            details: "The query builder parameterizes this path before execution.",
         }));
-        expect(trackReportConversionEventMock).toHaveBeenCalledWith("report_false_positive_flagged", "scan_1");
+        expect(trackReportConversionEventMock).toHaveBeenCalledWith("report_false_positive_flagged", "scan_1", {
+            actorUsername: null,
+        });
     });
 
     it("allows anonymous shared-view submissions", async () => {
@@ -110,11 +116,26 @@ describe("submitReportFalsePositive", () => {
             findingIndex: 0,
             findingFingerprint: "code|src/api.ts|potential sql injection||user input reaches query sink.",
             isSharedView: true,
+            reason: "OTHER",
+            details: "Shared reviewer notes",
         });
 
         expect(createFalsePositiveSubmissionMock).toHaveBeenCalledWith(expect.objectContaining({
             submittedByUserId: null,
             isSharedView: true,
         }));
+    });
+
+    it("rejects empty details", async () => {
+        await expect(submitReportFalsePositive({
+            scanId: "scan_1",
+            findingIndex: 0,
+            findingFingerprint: "code|src/api.ts|potential sql injection||user input reaches query sink.",
+            isSharedView: false,
+            reason: "NOT_A_VULNERABILITY",
+            details: "   ",
+        })).rejects.toThrow("Please include details for the false positive report");
+
+        expect(createFalsePositiveSubmissionMock).not.toHaveBeenCalled();
     });
 });

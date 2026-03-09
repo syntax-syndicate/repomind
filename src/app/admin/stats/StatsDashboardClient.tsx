@@ -4,13 +4,18 @@ import { useEffect, useState, useMemo } from "react";
 import {
     Users, Activity, Smartphone, Monitor, Globe,
     RefreshCw, ArrowUpDown, ChevronUp, ChevronDown,
-    UserCheck, TrendingUp, Database, Zap, Mail, Search, MessageSquare, ShieldAlert
+    UserCheck, TrendingUp, Database, Zap, Mail, Search, MessageSquare, ShieldAlert, Trash2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import type { AnalyticsData, VisitorData } from "@/lib/analytics";
-import { updateReportFalsePositiveReviewStatus } from "@/app/actions";
+import type { AnalyticsData, LoggedInUserData, VisitorData } from "@/lib/analytics";
+import {
+    deleteLoggedInUserAccount,
+    resetAdminReportFunnel,
+    updateReportFalsePositiveReviewStatus,
+} from "@/app/actions";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 
 type HistoryRange = "24h" | "1w" | "1m" | "3m";
 
@@ -19,6 +24,7 @@ interface StatsDashboardClientProps {
     userAgent: string;
     country: string;
     isMobile: boolean;
+    currentUsername: string | null;
 }
 
 type SortConfig = {
@@ -26,16 +32,34 @@ type SortConfig = {
     direction: 'asc' | 'desc';
 };
 
-export default function StatsDashboardClient({ data, userAgent, country, isMobile }: StatsDashboardClientProps) {
+function formatFalsePositiveReason(reason: string): string {
+    return reason
+        .toLowerCase()
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+}
+
+export default function StatsDashboardClient({
+    data,
+    userAgent,
+    country,
+    isMobile,
+    currentUsername,
+}: StatsDashboardClientProps) {
     const router = useRouter();
-    const loggedInUsers = useMemo(() => data.loggedInUsers ?? [], [data.loggedInUsers]);
     const [falsePositiveRows, setFalsePositiveRows] = useState(() => data.falsePositiveReview?.recentSubmissions ?? []);
+    const [accountRows, setAccountRows] = useState<LoggedInUserData[]>(() => data.loggedInUsers ?? []);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [selectedRange, setSelectedRange] = useState<HistoryRange>("24h");
     const [sortConfig, setSortConfig] = useState<SortConfig>({ key: 'lastSeen', direction: 'desc' });
     const [visibleCount, setVisibleCount] = useState(15);
     const [currentTime, setCurrentTime] = useState(0);
     const [pendingSubmissionId, setPendingSubmissionId] = useState<string | null>(null);
+    const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
+    const [isResettingFunnel, setIsResettingFunnel] = useState(false);
+    const [deletingUserId, setDeletingUserId] = useState<string | null>(null);
+    const [deleteCandidate, setDeleteCandidate] = useState<LoggedInUserData | null>(null);
 
     useEffect(() => {
         const tick = () => setCurrentTime(Date.now());
@@ -48,6 +72,10 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
     useEffect(() => {
         setFalsePositiveRows(data.falsePositiveReview?.recentSubmissions ?? []);
     }, [data.falsePositiveReview]);
+
+    useEffect(() => {
+        setAccountRows(data.loggedInUsers ?? []);
+    }, [data.loggedInUsers]);
 
     const handleRefresh = () => {
         setIsRefreshing(true);
@@ -70,6 +98,39 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
             toast.error(message);
         } finally {
             setPendingSubmissionId(null);
+        }
+    };
+
+    const handleResetReportFunnel = async () => {
+        setIsResettingFunnel(true);
+        try {
+            await resetAdminReportFunnel();
+            toast.success("Report funnel counters reset");
+            setIsResetDialogOpen(false);
+            router.refresh();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to reset report funnel";
+            toast.error(message);
+        } finally {
+            setIsResettingFunnel(false);
+        }
+    };
+
+    const handleDeleteAccount = async () => {
+        if (!deleteCandidate) return;
+
+        setDeletingUserId(deleteCandidate.id);
+        try {
+            await deleteLoggedInUserAccount({ userId: deleteCandidate.id });
+            setAccountRows((current) => current.filter((user) => user.id !== deleteCandidate.id));
+            toast.success("Incomplete account deleted");
+            setDeleteCandidate(null);
+            router.refresh();
+        } catch (error) {
+            const message = error instanceof Error ? error.message : "Failed to delete account";
+            toast.error(message);
+        } finally {
+            setDeletingUserId(null);
         }
     };
 
@@ -117,13 +178,14 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
     const reportFunnel = data.reportFunnel;
     const weeklyReportViews = reportFunnel?.weekly.report_viewed_shared ?? 0;
     const weeklyFixStarts = reportFunnel?.weekly.report_fix_chat_started ?? 0;
-    const weeklyPromptPreviews = reportFunnel?.weekly.report_fix_prompt_previewed ?? 0;
-    const weeklyPromptCopies = reportFunnel?.weekly.report_fix_prompt_copied ?? 0;
     const weeklyLoginGates = reportFunnel?.weekly.report_fix_login_gate_shown ?? 0;
-    const weeklyFalsePositiveRate = reportFunnel?.weeklyFalsePositiveRate ?? 0;
-    const weeklyExpiredLinkFailures = reportFunnel?.weeklyExpiredLinkFailures ?? 0;
     const weeklyConversionRate = reportFunnel?.weeklyConversionRate ?? 0;
     const falsePositiveReview = data.falsePositiveReview;
+    const loggedInUsers = accountRows;
+    const incompleteLoggedInUsers = useMemo(
+        () => accountRows.filter((user) => !user.email),
+        [accountRows]
+    );
 
     const sortedVisitors = useMemo(() => {
         const items = [...data.recentVisitors];
@@ -256,7 +318,7 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
                     />
                     <StatsCard
                         title="Logged Accounts"
-                        value={data.totalLoggedInUsers ?? loggedInUsers.length}
+                        value={loggedInUsers.length}
                         subValue={`${loggedInUsers.length} shown`}
                         icon={<UserCheck className="w-5 h-5 text-cyan-400" />}
                     />
@@ -270,21 +332,28 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
 
                 <div className="bg-zinc-900/50 border border-white/10 rounded-2xl p-6">
                     <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
-                        <h2 className="text-lg font-semibold flex items-center gap-2">
-                            <Zap className="w-5 h-5 text-indigo-400" />
-                            Report to Chat Funnel (7d)
-                        </h2>
-                        <span className="text-xs text-zinc-500 uppercase tracking-wider">{"North star: report -> chat starts"}</span>
+                        <div>
+                            <h2 className="text-lg font-semibold flex items-center gap-2">
+                                <Zap className="w-5 h-5 text-indigo-400" />
+                                Report to Chat Funnel (7d)
+                            </h2>
+                            <span className="text-xs text-zinc-500 uppercase tracking-wider">{"North star: report -> chat starts"}</span>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setIsResetDialogOpen(true)}
+                            disabled={isResettingFunnel}
+                            className="inline-flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-red-200 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            <RefreshCw className={`w-3.5 h-3.5 ${isResettingFunnel ? "animate-spin" : ""}`} />
+                            Reset Funnel
+                        </button>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                         <MetricTile label="Shared Views" value={weeklyReportViews} />
-                        <MetricTile label="Prompt Previews" value={weeklyPromptPreviews} />
-                        <MetricTile label="Prompt Copies" value={weeklyPromptCopies} />
                         <MetricTile label="Login Gates" value={weeklyLoginGates} />
                         <MetricTile label="Fix Chats" value={weeklyFixStarts} />
                         <MetricTile label="Conv Rate" value={`${weeklyConversionRate.toFixed(1)}%`} />
-                        <MetricTile label="False+ Rate" value={`${weeklyFalsePositiveRate.toFixed(1)}%`} />
-                        <MetricTile label="Expired Links" value={weeklyExpiredLinkFailures} />
                     </div>
                 </div>
 
@@ -609,6 +678,7 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
                                 <tr>
                                     <th className="px-6 py-4">Repository</th>
                                     <th className="px-6 py-4">Finding</th>
+                                    <th className="px-6 py-4">Reporter Notes</th>
                                     <th className="px-6 py-4">Submitted By</th>
                                     <th className="px-6 py-4">Created</th>
                                     <th className="px-6 py-4">Status</th>
@@ -631,6 +701,16 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
                                                 <span className="text-xs text-zinc-500">
                                                     {submission.severity.toUpperCase()} • {submission.file}{submission.line ? `:${submission.line}` : ""}
                                                 </span>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="max-w-md space-y-2">
+                                                <span className="inline-flex rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-amber-200">
+                                                    {formatFalsePositiveReason(submission.reason)}
+                                                </span>
+                                                <p className="whitespace-pre-wrap text-xs leading-relaxed text-zinc-400">
+                                                    {submission.details}
+                                                </p>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-zinc-300">
@@ -661,7 +741,7 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
                                 ))}
                                 {falsePositiveRows.length === 0 && (
                                     <tr>
-                                        <td colSpan={5} className="px-6 py-12 text-center text-zinc-500">
+                                        <td colSpan={6} className="px-6 py-12 text-center text-zinc-500">
                                             <div className="flex flex-col items-center gap-2">
                                                 <ShieldAlert className="w-8 h-8 opacity-20" />
                                                 <p>No false positive submissions yet.</p>
@@ -676,10 +756,17 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
 
                 <div className="bg-zinc-900/50 border border-white/10 rounded-2xl overflow-hidden">
                     <div className="px-6 py-5 border-b border-white/10 flex items-center justify-between">
-                        <h2 className="text-xl font-semibold">Logged-In Accounts (Postgres)</h2>
-                        <span className="text-xs text-zinc-500 font-mono">
-                            Showing {displayedLoggedInUsers.length} of {loggedInUsers.length}
-                        </span>
+                        <div className="flex flex-col gap-2">
+                            <h2 className="text-xl font-semibold">Logged-In Accounts (Postgres)</h2>
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <span className="rounded-full border border-white/10 bg-zinc-950 px-2.5 py-1 font-mono text-zinc-500">
+                                    Showing {displayedLoggedInUsers.length} of {loggedInUsers.length}
+                                </span>
+                                <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2.5 py-1 font-semibold uppercase tracking-wider text-red-200">
+                                    {incompleteLoggedInUsers.length} incomplete without email
+                                </span>
+                            </div>
+                        </div>
                     </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-left text-sm whitespace-nowrap">
@@ -692,6 +779,7 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
                                     <th className="px-6 py-4 text-right">Searches</th>
                                     <th className="px-6 py-4 text-right">Chats</th>
                                     <th className="px-6 py-4">Last Activity (IST)</th>
+                                    <th className="px-6 py-4 text-right">Actions</th>
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-white/5">
@@ -699,18 +787,25 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
                                     <tr key={user.id} className="hover:bg-white/[0.02] transition-colors">
                                         <td className="px-6 py-4">
                                             <div className="flex flex-col">
-                                                <span className="text-zinc-200 font-medium">
-                                                    {user.githubLogin ? `@${user.githubLogin}` : user.id.slice(0, 10)}
-                                                </span>
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-zinc-200 font-medium">
+                                                        {user.githubLogin ? `@${user.githubLogin}` : user.id.slice(0, 10)}
+                                                    </span>
+                                                    {!user.email && (
+                                                        <span className="rounded-full border border-red-500/20 bg-red-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-red-200">
+                                                            Incomplete
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <span className="text-[10px] text-zinc-500 font-mono uppercase">
                                                     Joined {formatIST(user.createdAt)}
                                                 </span>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-zinc-300">
-                                            <span className="inline-flex items-center gap-2">
+                                            <span className={`inline-flex items-center gap-2 ${user.email ? "" : "text-red-200"}`}>
                                                 <Mail className="w-3 h-3 text-zinc-500" />
-                                                {user.email || "N/A"}
+                                                {user.email || "Missing email"}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right font-mono text-zinc-200">{user.queryCount}</td>
@@ -737,11 +832,28 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
                                                 <span className="text-zinc-500">No activity</span>
                                             )}
                                         </td>
+                                        <td className="px-6 py-4 text-right">
+                                            {!user.email && user.githubLogin !== currentUsername ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setDeleteCandidate(user)}
+                                                    disabled={deletingUserId === user.id}
+                                                    className="inline-flex items-center gap-2 rounded-lg border border-red-500/20 bg-red-500/10 px-3 py-2 text-xs font-semibold uppercase tracking-wider text-red-200 transition-colors hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                                                >
+                                                    <Trash2 className="w-3.5 h-3.5" />
+                                                    {deletingUserId === user.id ? "Deleting..." : "Delete"}
+                                                </button>
+                                            ) : (
+                                                <span className="text-xs text-zinc-600">
+                                                    {user.githubLogin === currentUsername ? "Protected" : "Retained"}
+                                                </span>
+                                            )}
+                                        </td>
                                     </tr>
                                 ))}
                                 {loggedInUsers.length === 0 && (
                                     <tr>
-                                        <td colSpan={7} className="px-6 py-12 text-center text-zinc-500">
+                                        <td colSpan={8} className="px-6 py-12 text-center text-zinc-500">
                                             <div className="flex flex-col items-center gap-2">
                                                 <UserCheck className="w-8 h-8 opacity-20" />
                                                 <p>No logged-in account activity yet.</p>
@@ -870,6 +982,46 @@ export default function StatsDashboardClient({ data, userAgent, country, isMobil
                         </button>
                     </div>
                 )}
+
+                <ConfirmDialog
+                    isOpen={isResetDialogOpen}
+                    title="Reset report funnel metrics?"
+                    message="This clears the current report funnel counters in KV so the 7-day card starts fresh. Historical values cannot be restored."
+                    confirmText={isResettingFunnel ? "Resetting..." : "Reset Funnel"}
+                    cancelText="Cancel"
+                    confirmVariant="danger"
+                    onCancel={() => {
+                        if (!isResettingFunnel) {
+                            setIsResetDialogOpen(false);
+                        }
+                    }}
+                    onConfirm={() => {
+                        if (!isResettingFunnel) {
+                            void handleResetReportFunnel();
+                        }
+                    }}
+                />
+
+                <ConfirmDialog
+                    isOpen={Boolean(deleteCandidate)}
+                    title="Delete incomplete account?"
+                    message={deleteCandidate
+                        ? `Delete ${deleteCandidate.githubLogin ? `@${deleteCandidate.githubLogin}` : deleteCandidate.id.slice(0, 10)}. This permanently removes the incomplete account and any cascaded child rows.`
+                        : ""}
+                    confirmText={deletingUserId ? "Deleting..." : "Delete Account"}
+                    cancelText="Cancel"
+                    confirmVariant="danger"
+                    onCancel={() => {
+                        if (!deletingUserId) {
+                            setDeleteCandidate(null);
+                        }
+                    }}
+                    onConfirm={() => {
+                        if (!deletingUserId) {
+                            void handleDeleteAccount();
+                        }
+                    }}
+                />
             </div>
         </div>
     );

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { ReportFalsePositiveReason } from "@prisma/client";
 import { useEffect, useMemo, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
@@ -44,6 +45,38 @@ const confidenceConfig = {
     medium: { label: "Medium Confidence", className: "text-yellow-300 border-yellow-500/30 bg-yellow-500/10" },
     low: { label: "Low Confidence", className: "text-zinc-300 border-zinc-500/30 bg-zinc-500/10" },
 } as const;
+
+const falsePositiveReasonOptions: Array<{
+    value: ReportFalsePositiveReason;
+    label: string;
+    description: string;
+}> = [
+    {
+        value: "NOT_A_VULNERABILITY",
+        label: "Not a vulnerability",
+        description: "The finding is technically incorrect for this code path.",
+    },
+    {
+        value: "TEST_OR_FIXTURE",
+        label: "Test or fixture only",
+        description: "The finding points to non-production code or seeded test data.",
+    },
+    {
+        value: "FALSE_DATAFLOW",
+        label: "False dataflow",
+        description: "The scanner connected source and sink incorrectly.",
+    },
+    {
+        value: "INTENDED_BEHAVIOR",
+        label: "Intended behavior",
+        description: "The flagged pattern is deliberate and already protected by surrounding controls.",
+    },
+    {
+        value: "OTHER",
+        label: "Other",
+        description: "Use this when none of the standard categories fit.",
+    },
+];
 
 function SeverityBadge({ severity }: { severity: keyof typeof severityConfig }) {
     const config = severityConfig[severity] || severityConfig.info;
@@ -111,6 +144,9 @@ export function ReportContent({
     const [loginCallbackUrl, setLoginCallbackUrl] = useState<string | undefined>(undefined);
     const [now, setNow] = useState(() => Date.now());
     const [pendingFalsePositives, setPendingFalsePositives] = useState<Record<string, boolean>>({});
+    const [activeFalsePositiveKey, setActiveFalsePositiveKey] = useState<string | null>(null);
+    const [falsePositiveReason, setFalsePositiveReason] = useState<ReportFalsePositiveReason>("NOT_A_VULNERABILITY");
+    const [falsePositiveDetails, setFalsePositiveDetails] = useState("");
 
     useEffect(() => {
         const intervalId = window.setInterval(() => {
@@ -186,18 +222,40 @@ export function ReportContent({
         void trackReportConversion("report_fix_login_gate_shown", scan.id);
     };
 
-    const handleFalsePositive = async (view: ReportFindingView) => {
-        const key = `${view.fingerprint}:${view.index}`;
+    const activeFalsePositiveView = useMemo(() => {
+        if (!activeFalsePositiveKey) return null;
+        return findingViews.find((view) => `${view.fingerprint}:${view.index}` === activeFalsePositiveKey) ?? null;
+    }, [activeFalsePositiveKey, findingViews]);
+
+    const closeFalsePositiveModal = () => {
+        setActiveFalsePositiveKey(null);
+        setFalsePositiveReason("NOT_A_VULNERABILITY");
+        setFalsePositiveDetails("");
+    };
+
+    const openFalsePositiveModal = (view: ReportFindingView) => {
+        setActiveFalsePositiveKey(`${view.fingerprint}:${view.index}`);
+        setFalsePositiveReason("NOT_A_VULNERABILITY");
+        setFalsePositiveDetails("");
+    };
+
+    const handleFalsePositiveSubmit = async () => {
+        if (!activeFalsePositiveView) return;
+
+        const key = `${activeFalsePositiveView.fingerprint}:${activeFalsePositiveView.index}`;
         setPendingFalsePositives((current) => ({ ...current, [key]: true }));
 
         try {
             await submitReportFalsePositive({
                 scanId: scan.id,
-                findingIndex: view.index,
-                findingFingerprint: view.fingerprint,
+                findingIndex: activeFalsePositiveView.index,
+                findingFingerprint: activeFalsePositiveView.fingerprint,
                 isSharedView,
+                reason: falsePositiveReason,
+                details: falsePositiveDetails,
             });
             toast.success("False positive submitted");
+            closeFalsePositiveModal();
         } catch (error) {
             const message = error instanceof Error ? error.message : "Failed to submit false positive";
             toast.error(message);
@@ -435,7 +493,7 @@ export function ReportContent({
                                         </div>
                                         <div className="print:hidden flex items-center gap-2">
                                             <button
-                                                onClick={() => void handleFalsePositive(view)}
+                                                onClick={() => openFalsePositiveModal(view)}
                                                 disabled={Boolean(pendingFalsePositives[key])}
                                                 className="inline-flex items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-3.5 py-2 text-sm font-semibold text-zinc-300 transition-all hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
                                             >
@@ -496,6 +554,99 @@ export function ReportContent({
                 description="Your global remediation prompt is ready. Sign in to continue in Repo Chat with the prefilled fix prompt."
                 callbackUrl={loginCallbackUrl}
             />
+
+            {activeFalsePositiveView && (
+                <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+                    <div
+                        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+                        onClick={() => {
+                            if (!pendingFalsePositives[activeFalsePositiveKey]) {
+                                closeFalsePositiveModal();
+                            }
+                        }}
+                    />
+                    <div className="relative w-full max-w-2xl rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl">
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                void handleFalsePositiveSubmit();
+                            }}
+                            className="space-y-5 p-6"
+                        >
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-2 text-amber-300">
+                                    <ShieldAlert className="w-4 h-4" />
+                                    <span className="text-xs font-semibold uppercase tracking-[0.2em]">False Positive Report</span>
+                                </div>
+                                <h3 className="text-xl font-semibold text-white">{activeFalsePositiveView.finding.title}</h3>
+                                <p className="text-sm text-zinc-400">
+                                    {activeFalsePositiveView.finding.file}
+                                    {activeFalsePositiveView.finding.line ? `:${activeFalsePositiveView.finding.line}` : ""}
+                                    {" • "}
+                                    {activeFalsePositiveView.finding.severity.toUpperCase()}
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label htmlFor="false-positive-reason" className="text-sm font-medium text-zinc-200">
+                                    Why is this a false positive?
+                                </label>
+                                <select
+                                    id="false-positive-reason"
+                                    value={falsePositiveReason}
+                                    onChange={(event) => setFalsePositiveReason(event.target.value as ReportFalsePositiveReason)}
+                                    className="w-full rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 focus:border-indigo-500/50 focus:outline-none"
+                                >
+                                    {falsePositiveReasonOptions.map((option) => (
+                                        <option key={option.value} value={option.value}>
+                                            {option.label}
+                                        </option>
+                                    ))}
+                                </select>
+                                <p className="text-xs text-zinc-500">
+                                    {falsePositiveReasonOptions.find((option) => option.value === falsePositiveReason)?.description}
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label htmlFor="false-positive-details" className="text-sm font-medium text-zinc-200">
+                                    Full details
+                                </label>
+                                <textarea
+                                    id="false-positive-details"
+                                    value={falsePositiveDetails}
+                                    onChange={(event) => setFalsePositiveDetails(event.target.value)}
+                                    rows={5}
+                                    placeholder="Explain why this finding is incorrect, what controls already exist, and anything the reviewer should verify."
+                                    className="w-full rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500/50 focus:outline-none"
+                                />
+                                <p className="text-xs text-zinc-500">
+                                    Include enough context for review. This field is required.
+                                </p>
+                            </div>
+
+                            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                                <button
+                                    type="button"
+                                    onClick={closeFalsePositiveModal}
+                                    disabled={Boolean(pendingFalsePositives[activeFalsePositiveKey])}
+                                    className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={Boolean(pendingFalsePositives[activeFalsePositiveKey]) || falsePositiveDetails.trim().length === 0}
+                                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <ShieldAlert className="w-4 h-4" />
+                                    {pendingFalsePositives[activeFalsePositiveKey] ? "Submitting..." : "Submit False Positive"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

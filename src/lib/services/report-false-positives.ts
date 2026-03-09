@@ -1,4 +1,4 @@
-import type { ReportFalsePositiveStatus } from "@prisma/client";
+import type { ReportFalsePositiveReason, ReportFalsePositiveStatus } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 export interface CreateFalsePositiveSubmissionInput {
@@ -13,6 +13,8 @@ export interface CreateFalsePositiveSubmissionInput {
     file: string;
     line?: number;
     confidence?: string;
+    reason: ReportFalsePositiveReason;
+    details: string;
     isSharedView: boolean;
     submittedByUserId?: string | null;
 }
@@ -30,6 +32,8 @@ export interface FalsePositiveReviewRecord {
     file: string;
     line: number | null;
     confidence: string | null;
+    reason: ReportFalsePositiveReason;
+    details: string;
     isSharedView: boolean;
     status: ReportFalsePositiveStatus;
     submittedByUserId: string | null;
@@ -61,6 +65,8 @@ function mapRecord(record: {
     file: string;
     line: number | null;
     confidence: string | null;
+    reason: ReportFalsePositiveReason;
+    details: string;
     isSharedView: boolean;
     status: ReportFalsePositiveStatus;
     submittedByUserId: string | null;
@@ -83,6 +89,8 @@ function mapRecord(record: {
         file: record.file,
         line: record.line,
         confidence: record.confidence,
+        reason: record.reason,
+        details: record.details,
         isSharedView: record.isSharedView,
         status: record.status,
         submittedByUserId: record.submittedByUserId,
@@ -108,6 +116,8 @@ export async function createFalsePositiveSubmission(input: CreateFalsePositiveSu
             file: input.file,
             line: input.line ?? null,
             confidence: input.confidence ?? null,
+            reason: input.reason,
+            details: input.details,
             isSharedView: input.isSharedView,
             submittedByUserId: input.submittedByUserId ?? null,
         },

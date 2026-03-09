@@ -1,5 +1,6 @@
 import { Metadata } from "next";
 import Link from "next/link";
+import { auth } from "@/lib/auth";
 import { getPreviousScan, getScanResultWithStatus } from "@/lib/services/scan-storage";
 import { resolveScanFromShareToken } from "@/lib/services/scan-share-links";
 import { buildReportViewData } from "@/lib/services/report-service";
@@ -66,25 +67,35 @@ export default async function SharedReportByTokenPage({
 }) {
     const resolvedParams = await params;
     const resolution = await resolveScanFromShareToken(resolvedParams.token);
+    const session = await auth();
+    const actorUsername = session?.user?.username ?? null;
 
     if (resolution.status !== "ok") {
         if (resolution.status === "expired") {
-            await trackReportConversionEvent("report_expired_viewed");
+            await trackReportConversionEvent("report_expired_viewed", undefined, {
+                actorUsername,
+            });
         } else {
-            await trackReportConversionEvent("report_shared_link_invalid");
+            await trackReportConversionEvent("report_shared_link_invalid", undefined, {
+                actorUsername,
+            });
         }
         return <SharedLinkFailureState reason={resolution.status} />;
     }
 
     const scanResult = await getScanResultWithStatus(resolution.scanId);
     if (scanResult.status === "not_found") {
-        await trackReportConversionEvent("report_shared_link_invalid");
+        await trackReportConversionEvent("report_shared_link_invalid", undefined, {
+            actorUsername,
+        });
         return <SharedLinkFailureState reason="invalid" />;
     }
     const scan = scanResult.scan;
 
     if (scanResult.status === "expired") {
-        await trackReportConversionEvent("report_expired_viewed", scan.id);
+        await trackReportConversionEvent("report_expired_viewed", scan.id, {
+            actorUsername,
+        });
         return (
             <ReportExpiredState
                 owner={scan.owner}
@@ -94,7 +105,9 @@ export default async function SharedReportByTokenPage({
         );
     }
 
-    await trackReportConversionEvent("report_viewed_shared", scan.id);
+    await trackReportConversionEvent("report_viewed_shared", scan.id, {
+        actorUsername,
+    });
 
     const previousScan = await getPreviousScan(scan.owner, scan.repo, scan.id, scan.timestamp);
     const reportView = buildReportViewData(scan, previousScan);

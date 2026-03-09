@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReportContent } from "@/app/report/[scan_id]/ReportContent";
 
 const {
+    authMock,
     resolveScanFromShareTokenMock,
     getScanResultWithStatusMock,
     getPreviousScanMock,
     buildReportViewDataMock,
     trackReportConversionEventMock,
 } = vi.hoisted(() => ({
+    authMock: vi.fn(),
     resolveScanFromShareTokenMock: vi.fn(),
     getScanResultWithStatusMock: vi.fn(),
     getPreviousScanMock: vi.fn(),
@@ -21,7 +23,7 @@ vi.mock("@/lib/services/scan-share-links", () => ({
 }));
 
 vi.mock("@/lib/auth", () => ({
-    auth: vi.fn(),
+    auth: authMock,
 }));
 
 vi.mock("@/lib/services/scan-storage", () => ({
@@ -58,6 +60,8 @@ describe("shared report page token resolution", () => {
         getPreviousScanMock.mockReset();
         buildReportViewDataMock.mockReset();
         trackReportConversionEventMock.mockReset();
+        authMock.mockReset();
+        authMock.mockResolvedValue(null);
     });
 
     it("tracks invalid link events", async () => {
@@ -68,7 +72,9 @@ describe("shared report page token resolution", () => {
         }) as ReactElement;
 
         expect(view.type).not.toBe(ReportContent);
-        expect(trackReportConversionEventMock).toHaveBeenCalledWith("report_expired_viewed");
+        expect(trackReportConversionEventMock).toHaveBeenCalledWith("report_expired_viewed", undefined, {
+            actorUsername: null,
+        });
     });
 
     it("renders shared report content when token resolves", async () => {
@@ -99,7 +105,9 @@ describe("shared report page token resolution", () => {
             globalChatHref: string;
         }>;
 
-        expect(trackReportConversionEventMock).toHaveBeenCalledWith("report_viewed_shared", "scan_1");
+        expect(trackReportConversionEventMock).toHaveBeenCalledWith("report_viewed_shared", "scan_1", {
+            actorUsername: null,
+        });
         expect(view.type).toBe(ReportContent);
         expect(view.props.isSharedView).toBe(true);
         expect(view.props.canShareReport).toBe(true);
@@ -123,6 +131,8 @@ describe("shared report page token resolution", () => {
         }) as ReactElement;
 
         expect(view.type).not.toBe(ReportContent);
-        expect(trackReportConversionEventMock).toHaveBeenCalledWith("report_expired_viewed", "scan_1");
+        expect(trackReportConversionEventMock).toHaveBeenCalledWith("report_expired_viewed", "scan_1", {
+            actorUsername: null,
+        });
     });
 });

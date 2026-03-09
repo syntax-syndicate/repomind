@@ -11,6 +11,7 @@
  */
 
 import { headers } from "next/headers";
+import type { ReportFalsePositiveReason } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { isAdminUser } from "@/lib/admin-auth";
 import { kv } from "@vercel/kv";
@@ -29,6 +30,7 @@ import {
     trackAuthenticatedQueryEvent,
     getPublicStats,
     trackReportConversionEvent,
+    resetReportConversionMetrics,
     type ReportConversionEvent,
 } from "@/lib/analytics";
 import type { StreamUpdate } from "@/lib/streaming-types";
@@ -75,6 +77,15 @@ import {
     createFalsePositiveSubmission,
     updateFalsePositiveStatus,
 } from "@/lib/services/report-false-positives";
+import { prisma } from "@/lib/db";
+
+const FALSE_POSITIVE_REASONS = new Set<ReportFalsePositiveReason>([
+    "NOT_A_VULNERABILITY",
+    "TEST_OR_FIXTURE",
+    "FALSE_DATAFLOW",
+    "INTENDED_BEHAVIOR",
+    "OTHER",
+]);
 
 function getErrorMessage(error: unknown): string {
     if (error && typeof error === "object" && "message" in error && typeof (error as { message?: unknown }).message === "string") {
@@ -198,7 +209,10 @@ export async function fetchPublicStats() {
 }
 
 export async function trackReportConversion(event: ReportConversionEvent, scanId?: string) {
-    await trackReportConversionEvent(event, scanId);
+    const session = await auth();
+    await trackReportConversionEvent(event, scanId, {
+        actorUsername: session?.user?.username ?? null,
+    });
 }
 
 /**
@@ -635,6 +649,8 @@ export async function submitReportFalsePositive(input: {
     findingIndex: number;
     findingFingerprint: string;
     isSharedView: boolean;
+    reason: ReportFalsePositiveReason;
+    details: string;
 }) {
     const session = await auth();
     const userId = getSessionUserId(session);
@@ -658,6 +674,13 @@ export async function submitReportFalsePositive(input: {
     if (fingerprint !== input.findingFingerprint) {
         throw new Error("Finding fingerprint mismatch");
     }
+    if (!FALSE_POSITIVE_REASONS.has(input.reason)) {
+        throw new Error("Invalid false positive reason");
+    }
+    const details = input.details.trim();
+    if (!details) {
+        throw new Error("Please include details for the false positive report");
+    }
 
     await createFalsePositiveSubmission({
         scanId: scan.id,
@@ -671,11 +694,15 @@ export async function submitReportFalsePositive(input: {
         file: finding.file,
         line: finding.line,
         confidence: finding.confidence,
+        reason: input.reason,
+        details,
         isSharedView: input.isSharedView,
         submittedByUserId: userId ?? null,
     });
 
-    await trackReportConversionEvent("report_false_positive_flagged", scan.id);
+    await trackReportConversionEvent("report_false_positive_flagged", scan.id, {
+        actorUsername: session?.user?.username ?? null,
+    });
 
     return { ok: true };
 }
@@ -703,6 +730,49 @@ export async function updateReportFalsePositiveReviewStatus(input: {
         status: input.status,
         reviewedByUserId: userId ?? null,
     });
+}
+
+export async function resetAdminReportFunnel() {
+    const { session } = await requireAuthenticatedActor();
+    if (!isAdminUser(session)) {
+        throw new Error("Forbidden");
+    }
+
+    await resetReportConversionMetrics();
+
+    return { ok: true };
+}
+
+export async function deleteLoggedInUserAccount(input: { userId: string }) {
+    const { session } = await requireAuthenticatedActor();
+    if (!isAdminUser(session)) {
+        throw new Error("Forbidden");
+    }
+
+    const user = await prisma.user.findUnique({
+        where: { id: input.userId },
+        select: {
+            id: true,
+            email: true,
+            githubLogin: true,
+        },
+    });
+
+    if (!user) {
+        throw new Error("User not found");
+    }
+    if (user.email) {
+        throw new Error("Only incomplete accounts can be deleted here");
+    }
+    if (user.githubLogin && user.githubLogin === session.user.username) {
+        throw new Error("Cannot delete the configured admin account");
+    }
+
+    await prisma.user.delete({
+        where: { id: input.userId },
+    });
+
+    return { ok: true, deletedUserId: input.userId };
 }
 
 

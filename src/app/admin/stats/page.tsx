@@ -35,6 +35,7 @@ export default async function AdminStatsPage() {
             userAgent={userAgent}
             country={country || "Unknown"}
             isMobile={isMobile}
+            currentUsername={session.user.username ?? null}
         />
     );
 }

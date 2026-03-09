@@ -86,7 +86,9 @@ export default async function PrivateReportPage({ params }: { params: Promise<{ 
     }
 
     if (scanResult.status === "expired") {
-        await trackReportConversionEvent("report_expired_viewed", scan.id);
+        await trackReportConversionEvent("report_expired_viewed", scan.id, {
+            actorUsername: session?.user?.username ?? null,
+        });
         return (
             <ReportExpiredState
                 owner={scan.owner}

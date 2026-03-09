@@ -136,6 +136,8 @@ describe("private report page access", () => {
 
         const view = await ReportPage({ params: Promise.resolve({ scan_id: "scan_1" }) }) as ReactElement;
         expect(view.type).not.toBe(ReportContent);
-        expect(trackReportConversionEventMock).toHaveBeenCalledWith("report_expired_viewed", "scan_1");
+        expect(trackReportConversionEventMock).toHaveBeenCalledWith("report_expired_viewed", "scan_1", {
+            actorUsername: null,
+        });
     });
 });

@@ -32,7 +32,6 @@ export interface OutreachPackData {
     strongestFinding: ReportFindingView | null;
     impactStatement: string;
     shareUrl: string;
-    fixChatCta: string;
     outreachMessage: string;
 }
 
@@ -405,40 +404,60 @@ function isHighPriorityOutreachCandidate(view: ReportFindingView): boolean {
     return (severity === "critical" || severity === "high") && confidence === "high";
 }
 
+function inferInterestingAreaFromFinding(view: ReportFindingView | null): string {
+    if (!view) {
+        return "some of the implementation details";
+    }
+
+    const rawPath = view.finding.file.replace(/\\/g, "/");
+    const segments = rawPath.split("/").filter(Boolean);
+    const interestingSegments = segments.filter((segment) => {
+        const normalized = segment.toLowerCase();
+        return !["src", "app", "lib", "components", "pages", "api"].includes(normalized)
+            && !normalized.endsWith(".ts")
+            && !normalized.endsWith(".tsx")
+            && !normalized.endsWith(".js")
+            && !normalized.endsWith(".jsx");
+    });
+
+    if (interestingSegments.length > 0) {
+        const focus = interestingSegments.slice(0, 2).join("/");
+        return `the ${focus} area`;
+    }
+
+    const fileName = segments[segments.length - 1];
+    if (fileName) {
+        return `the ${fileName} implementation`;
+    }
+
+    return "some of the implementation details";
+}
+
 export function buildOutreachPack(scan: StoredScan, shareUrl: string): OutreachPackData {
     const reportView = buildReportViewData(scan);
-    const shareOrigin = (() => {
-        try {
-            return new URL(shareUrl).origin;
-        } catch {
-            return "";
-        }
-    })();
     const strongestFinding =
         reportView.findingViews.find(isHighPriorityOutreachCandidate) ?? reportView.findingViews[0] ?? null;
     const strongestImpact = strongestFinding?.impact ?? "No validated findings were available to include.";
-    const fixChatCta = strongestFinding
-        ? `Open this finding in Repo Chat for a patch + regression tests:\n${shareOrigin}${strongestFinding.chatHref}`
-        : `Open the repository in Repo Chat for guided remediation:\n${shareOrigin}/chat?q=${encodeURIComponent(`${scan.owner}/${scan.repo}`)}`;
+    const repoHook = inferInterestingAreaFromFinding(strongestFinding);
 
     const maintainerNote = [
         `Hi ${scan.owner} maintainers,`,
         "",
-        `I ran a security review on ${scan.owner}/${scan.repo} and identified ${scan.summary.total} issue${scan.summary.total === 1 ? "" : "s"} (${scan.summary.high} high / ${scan.summary.critical} critical).`,
-        "Sharing this privately first so you can triage safely before any public disclosure.",
+        `I came across ${scan.owner}/${scan.repo} and found ${repoHook} particularly interesting, so I spent some time reviewing it more closely.`,
+        `I also ran a security scan and found ${scan.summary.total} issue${scan.summary.total === 1 ? "" : "s"} (${scan.summary.high} high / ${scan.summary.critical} critical). Sharing this privately first so you can triage it safely before any public disclosure.`,
     ].join("\n");
 
     const outreachMessage = [
         maintainerNote,
         "",
         strongestFinding
-            ? `Strongest finding: ${strongestFinding.finding.title} in ${strongestFinding.finding.file}${strongestFinding.finding.line ? `:${strongestFinding.finding.line}` : ""}.`
+            ? `One finding that stood out most was ${strongestFinding.finding.title} in ${strongestFinding.finding.file}${strongestFinding.finding.line ? `:${strongestFinding.finding.line}` : ""}.`
             : "No strongest finding available.",
         `Impact: ${strongestImpact}`,
         "",
         `Private report link (expires automatically): ${shareUrl}`,
         "",
-        fixChatCta,
+        "You can review the full findings and supporting detail in the private report link above.",
     ].join("\n");
 
     return {
@@ -446,7 +465,6 @@ export function buildOutreachPack(scan: StoredScan, shareUrl: string): OutreachP
         strongestFinding,
         impactStatement: strongestImpact,
         shareUrl,
-        fixChatCta,
         outreachMessage,
     };
 }

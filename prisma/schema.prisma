@@ -105,6 +105,14 @@ enum ReportFalsePositiveStatus {
   REJECTED
 }
 
+enum ReportFalsePositiveReason {
+  NOT_A_VULNERABILITY
+  TEST_OR_FIXTURE
+  FALSE_DATAFLOW
+  INTENDED_BEHAVIOR
+  OTHER
+}
+
 model ReportFalsePositive {
   id                String                    @id @default(cuid())
   scanId             String
@@ -118,6 +126,8 @@ model ReportFalsePositive {
   file               String
   line               Int?
   confidence         String?
+  reason             ReportFalsePositiveReason
+  details            String                   @db.Text
   isSharedView       Boolean                   @default(false)
   submittedByUserId  String?
   status             ReportFalsePositiveStatus @default(PENDING)

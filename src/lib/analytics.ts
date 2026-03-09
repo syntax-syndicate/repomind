@@ -76,6 +76,10 @@ export interface ReportFunnelMetrics {
     weeklyExpiredLinkFailures: number;
 }
 
+interface ReportConversionTrackingOptions {
+    actorUsername?: string | null;
+}
+
 /**
  * Fetch and parse KV info for storage stats
  */
@@ -414,10 +418,24 @@ async function getReportFunnelMetrics(): Promise<ReportFunnelMetrics> {
     }
 }
 
+function isAdminActorUsername(actorUsername?: string | null): boolean {
+    const configuredAdmin = process.env.ADMIN_GITHUB_USERNAME?.trim();
+    if (!configuredAdmin || !actorUsername) {
+        return false;
+    }
+
+    return actorUsername === configuredAdmin;
+}
+
 export async function trackReportConversionEvent(
     event: ReportConversionEvent,
-    scanId?: string
+    scanId?: string,
+    options?: ReportConversionTrackingOptions,
 ): Promise<void> {
+    if (isAdminActorUsername(options?.actorUsername)) {
+        return;
+    }
+
     try {
         const dayKey = dayKeyFromDate(new Date());
         const pipeline = kv.pipeline();
@@ -431,6 +449,24 @@ export async function trackReportConversionEvent(
         await pipeline.exec();
     } catch (error) {
         console.error("Failed to track report conversion event:", error);
+    }
+}
+
+export async function resetReportConversionMetrics(): Promise<void> {
+    try {
+        const keys = await kv.keys("stats:report:*");
+        if (keys.length === 0) {
+            return;
+        }
+
+        const pipeline = kv.pipeline();
+        keys.forEach((key) => {
+            pipeline.del(key);
+        });
+        await pipeline.exec();
+    } catch (error) {
+        console.error("Failed to reset report conversion metrics:", error);
+        throw error;
     }
 }
 
