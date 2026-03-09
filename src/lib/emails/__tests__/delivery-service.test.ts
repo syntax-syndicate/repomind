@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TransactionalEmailStatus, TransactionalEmailTemplate } from "@prisma/client";
+import { TransactionalEmailStatus, TransactionalEmailTemplate } from "@/lib/emails/constants";
 
 const {
     prismaMock,

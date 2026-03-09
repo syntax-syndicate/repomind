@@ -5,7 +5,6 @@ const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg', '.bm
 const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.webm', '.mkv', '.flv', '.wmv', '.m4v', '.mpg', '.mpeg'];
 const BINARY_EXTENSIONS = ['.exe', '.dll', '.so', '.dylib', '.bin', '.pdf', '.zip', '.tar', '.gz', '.rar', '.7z', '.wasm'];
 const FONT_EXTENSIONS = ['.ttf', '.otf', '.woff', '.woff2', '.eot'];
-const LARGE_DATA_EXTENSIONS = ['.csv', '.json', '.xml', '.sql', '.db', '.sqlite'];
 
 // FileNode is the canonical domain type for git tree nodes — defined once in github.ts
 import type { FileNode } from "@/lib/github";

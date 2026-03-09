@@ -24,7 +24,6 @@ type TreeNode = {
 
 function buildTree(files: FileNode[]): TreeNode[] {
     const root: TreeNode[] = [];
-    const map: Record<string, TreeNode> = {};
 
     files.forEach((file) => {
         const parts = file.path.split("/");

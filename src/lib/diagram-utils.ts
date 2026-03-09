@@ -129,21 +129,6 @@ export function validateMermaidSyntax(code: string): { valid: boolean; error?: s
 }
 
 /**
- * Sanitize text content for Mermaid diagrams
- * Context-aware sanitization that preserves valid syntax
- */
-function sanitizeMermaidText(text: string): string {
-    return text
-        // Strip HTML tags but keep content
-        .replace(/<[^>]*>/g, ' ')
-        // Remove potentially dangerous characters but keep quotes if they look intentional
-        // We only remove quotes if they are unbalanced or weirdly placed
-        .replace(/[\\]/g, ' ') // Remove backslashes
-        .replace(/[\t]/g, ' ') // Remove tabs
-        .trim();
-}
-
-/**
  * Sanitize Mermaid code (fix common AI mistakes)
  * Smarter, less aggressive sanitization
  */
@@ -185,7 +170,7 @@ export function sanitizeMermaidCode(code: string): string {
         const nodeDefRegex = /^([a-zA-Z0-9_-]+)(\[|\(\(|\(|\[\[|\{\{)(.*?)(\]|\)\)|\)|\]\]|\}\})$/;
         const nodeMatch = trimmed.match(nodeDefRegex);
         if (nodeMatch) {
-            const [full, id, open, label, close] = nodeMatch;
+            const [, id, open, label, close] = nodeMatch;
             if (!label.startsWith('"') && (label.includes('(') || label.includes(')') || label.includes('[') || label.includes(']'))) {
                 return `${id}${open}"${label.replace(/"/g, "'")}"${close}`;
             }

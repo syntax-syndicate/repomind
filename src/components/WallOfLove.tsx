@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { Star } from "lucide-react";
 
@@ -77,12 +78,13 @@ export default function WallOfLove() {
                         </div>
                         <p className="text-zinc-300 text-sm leading-relaxed mb-6">&quot;{t.content}&quot;</p>
                         <div className="flex items-center gap-3 mt-auto">
-                            <img
+                            <Image
                                 src={t.avatar}
                                 alt={t.name}
                                 width={40}
                                 height={40}
                                 className="rounded-full shrink-0"
+                                unoptimized
                             />
                             <div>
                                 <div className="text-white text-sm font-semibold">{t.name}</div>

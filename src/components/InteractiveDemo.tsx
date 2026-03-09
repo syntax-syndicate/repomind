@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import Image from "next/image";
 import { motion, AnimatePresence, useInView } from "framer-motion";
 import { Terminal, Code2, BrainCircuit, CheckCircle2, ShieldAlert, GitMerge, ChevronLeft, ChevronRight } from "lucide-react";
 
@@ -285,7 +286,7 @@ export default function InteractiveDemo() {
                     {/* User Query Bubble */}
                     <div className="flex gap-4 items-start w-full">
                         <div className="p-2 bg-blue-500/10 rounded-lg shrink-0 border border-blue-500/20 overflow-hidden">
-                            <img src="/user-avatar.png" alt="User" className="w-6 h-6 rounded-sm object-cover" />
+                            <Image src="/user-avatar.png" alt="User" width={24} height={24} className="w-6 h-6 rounded-sm object-cover" />
                         </div>
                         <div className="bg-zinc-900/60 border border-zinc-800 p-4 rounded-xl rounded-tl-none w-full text-zinc-300 font-mono text-sm shadow-sm relative">
                             <div className="relative w-full">
@@ -321,7 +322,7 @@ export default function InteractiveDemo() {
                                 className="flex gap-4 items-start w-full"
                             >
                                 <div className="p-1 bg-zinc-900 rounded-lg shrink-0 border border-zinc-700 shadow-[0_0_15px_rgba(255,255,255,0.05)] overflow-hidden flex items-center justify-center w-10 h-10">
-                                    <img src="/1080x1080.png" alt="RepoMind" className="w-8 h-8 rounded-md object-cover" />
+                                    <Image src="/1080x1080.png" alt="RepoMind" width={32} height={32} className="w-8 h-8 rounded-md object-cover" />
                                 </div>
 
                                 <div className="flex-1 space-y-4">

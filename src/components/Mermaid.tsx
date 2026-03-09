@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import mermaid from "mermaid";
-import { validateMermaidSyntax, sanitizeMermaidCode, getFallbackTemplate, generateMermaidFromJSON } from "@/lib/diagram-utils";
+import { validateMermaidSyntax, sanitizeMermaidCode, generateMermaidFromJSON } from "@/lib/diagram-utils";
 import { Download, X, Maximize2, ZoomIn, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import html2canvas from "html2canvas-pro";

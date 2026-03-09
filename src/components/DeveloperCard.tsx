@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { MapPin, Link as LinkIcon, Github, Loader2 } from "lucide-react";
@@ -77,15 +78,18 @@ export function DeveloperCard({ username, name: initialName, avatar: initialAvat
                 <div className="relative flex gap-4">
                     {/* Avatar */}
                     <div className="relative w-16 h-16 shrink-0">
-                        <img
+                        <Image
                             src={avatarSrc}
                             alt={username}
+                            width={64}
+                            height={64}
                             className="w-16 h-16 rounded-full border-2 border-white/20 bg-zinc-800 object-cover"
                             onError={(e) => {
                                 // Fallback to icon if image fails to load
-                                e.currentTarget.style.display = 'none';
-                                e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                                e.currentTarget.style.display = "none";
+                                e.currentTarget.nextElementSibling?.classList.remove("hidden");
                             }}
+                            unoptimized
                         />
                         <div className="hidden w-16 h-16 rounded-full bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center overflow-hidden">
                             <UserIcon className="w-full h-full text-white" />

@@ -84,7 +84,7 @@ export async function suggestRefactoring(code: string): Promise<string> {
 
         const result = await model.generateContent(prompt);
         return result.response.text();
-    } catch (error) {
+    } catch {
         return 'Failed to generate suggestions.';
     }
 }

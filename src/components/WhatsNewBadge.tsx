@@ -1,8 +1,6 @@
 "use client";
 
 import { useState } from "react";
-
-import { Sparkles } from "lucide-react";
 import { WhatsNewModal } from "./WhatsNewModal";
 
 export function WhatsNewBadge() {

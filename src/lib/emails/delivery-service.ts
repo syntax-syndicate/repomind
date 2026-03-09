@@ -1,6 +1,7 @@
-import { Prisma, TransactionalEmailStatus, TransactionalEmailTemplate } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import type { WebhookEventPayload } from "resend";
 import { prisma } from "@/lib/db";
+import { TransactionalEmailStatus, TransactionalEmailTemplate } from "./constants";
 import { sendWelcomeEmail } from "./mailer";
 
 const MAX_RETRY_ATTEMPTS = 5;

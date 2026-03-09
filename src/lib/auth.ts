@@ -19,7 +19,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                     userId: user.id,
                     toEmail: user.email,
                     username: String(username),
-                }).catch((error) => {
+                }).catch((error: unknown) => {
                     console.error("Failed to queue welcome email:", error);
                 });
             }
@@ -30,7 +30,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                         where: { id: user.id },
                         data: { githubLogin: profile.login },
                     })
-                    .catch((error) => {
+                    .catch((error: unknown) => {
                         console.error("Failed to persist githubLogin:", error);
                     });
             }

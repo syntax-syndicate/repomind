@@ -9,6 +9,8 @@ export function renderMarkdownToHtml(markdown: string): string {
             components={{
                 img: ({ src, alt, ...props }) => {
                     if (!src) return null;
+                    // ReactDOMServer renders plain HTML, so next/image is not usable here.
+                    // eslint-disable-next-line @next/next/no-img-element
                     return <img src={src} alt={alt || ""} {...props} />;
                 },
             }}

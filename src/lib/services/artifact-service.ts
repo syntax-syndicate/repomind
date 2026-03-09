@@ -7,7 +7,6 @@
  * Each function accepts injectable deps for testing.
  */
 import { getFileContent } from "@/lib/github";
-import { countTokens } from "@/lib/tokens";
 import { searchFiles, type SearchResult, type SearchOptions } from "@/lib/search-engine";
 
 // ─── Injectable Deps ──────────────────────────────────────────────────────────
@@ -51,5 +50,4 @@ export async function searchRepositoryCode(
         return [];
     }
 }
-
 

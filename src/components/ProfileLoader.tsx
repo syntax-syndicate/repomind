@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import Image from "next/image";
 import { motion } from "framer-motion";
 import { Loader2, CheckCircle2, FileCode } from "lucide-react";
 import { UserIcon } from "@/components/icons/UserIcon";
@@ -124,10 +125,13 @@ export function ProfileLoader({ username }: ProfileLoaderProps) {
                             animate={{ opacity: 1, scale: 1 }}
                             className="mb-4 inline-block"
                         >
-                            <img
+                            <Image
                                 src={`https://github.com/${username}.png`}
                                 alt={username}
+                                width={96}
+                                height={96}
                                 className="w-24 h-24 rounded-2xl border-4 border-zinc-900 shadow-xl"
+                                unoptimized
                             />
                         </motion.div>
                         <h2 className="text-2xl font-bold mb-2">Loading @{username}</h2>

@@ -1,18 +1,14 @@
-import { Suspense } from "react";
-import { fetchGitHubData } from "../actions";
 import { ProfileLoader } from "@/components/ProfileLoader";
 import { RepoLoader } from "@/components/RepoLoader";
-import { RepoLayout } from "@/components/RepoLayout";
-import { Loader2, AlertCircle, ArrowLeft, Github, Search } from "lucide-react";
-import { GitHubRepo } from "@/lib/github";
+import { ArrowLeft, Search } from "lucide-react";
 import Link from "next/link";
 
-import { Metadata } from 'next';
+import type { Metadata } from "next";
 
 export const metadata: Metadata = {
     alternates: {
-        canonical: '/chat',
-    }
+        canonical: "/chat",
+    },
 };
 
 export default async function ChatPage({

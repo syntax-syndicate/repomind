@@ -52,7 +52,7 @@ try {
     } catch {
         console.log("PASS: gunzip threw error as expected");
     }
-} catch (e) {
+} catch {
     console.log("PASS: Buffer/gunzip handled error gracefully");
 }
 

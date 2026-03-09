@@ -1,10 +1,9 @@
-const { config } = require("dotenv");
+import { config } from "dotenv";
+import { kv } from "@vercel/kv";
+import { PrismaClient } from "@prisma/client";
 
 config({ path: ".env.local" });
 config();
-
-const { kv } = require("@vercel/kv");
-const { PrismaClient } = require("@prisma/client");
 
 const prisma = new PrismaClient();
 const userIdCache = new Map();

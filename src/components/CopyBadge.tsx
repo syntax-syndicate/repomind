@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Image from 'next/image';
 import { Copy, Check, Code2 } from 'lucide-react';
 import { getCanonicalSiteUrl } from '@/lib/site-url';
 
@@ -66,10 +67,13 @@ export function CopyBadge({ owner, repo }: CopyBadgeProps) {
             <div className="flex items-center gap-4 mt-1 bg-black/20 p-3 rounded-lg border border-white/5">
                 <span className="text-zinc-500 uppercase tracking-wider text-xs font-semibold">Preview:</span>
                 <a href={`${baseUrl}/repo/${owner}/${repo}`} target="_blank" rel="noopener noreferrer" className="block transform hover:scale-105 transition-transform drop-shadow-[0_0_12px_rgba(79,70,229,0.2)] hover:drop-shadow-[0_0_16px_rgba(79,70,229,0.4)]">
-                    <img
+                    <Image
                         src="https://img.shields.io/badge/Analyzed%20by-RepoMind-4F46E5?style=for-the-badge"
                         alt="Analyzed by RepoMind"
+                        width={154}
+                        height={28}
                         className="h-7"
+                        unoptimized
                     />
                 </a>
             </div>

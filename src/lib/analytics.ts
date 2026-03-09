@@ -1,4 +1,5 @@
 import { kv } from "@vercel/kv";
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
 
 export interface KVUsagePoint {
@@ -102,7 +103,7 @@ async function recordKVUsageHistory(currentSize: number): Promise<KVUsagePoint[]
 
     try {
         // Get the last point to check for throttling
-        const lastPoints = await kv.lrange<KVUsagePoint>(HISTORY_KEY, 0, 0);
+        const lastPoints = await kv.lrange(HISTORY_KEY, 0, 0) as KVUsagePoint[];
         let shouldAdd = true;
 
         if (lastPoints && lastPoints.length > 0) {
@@ -121,7 +122,7 @@ async function recordKVUsageHistory(currentSize: number): Promise<KVUsagePoint[]
         }
 
         // Return the full history
-        const history = await kv.lrange<KVUsagePoint>(HISTORY_KEY, 0, MAX_HISTORY - 1);
+        const history = await kv.lrange(HISTORY_KEY, 0, MAX_HISTORY - 1) as KVUsagePoint[];
         return history.reverse(); // Reverse so it's chronological for the graph
     } catch (error) {
         console.error("Failed to record KV history:", error);
@@ -219,6 +220,17 @@ function bigIntToNumber(value: bigint | null | undefined): number | null {
 
 async function getLoggedInUserStats(): Promise<LoggedInUserData[]> {
     try {
+        type UserRow = Prisma.UserGetPayload<{
+            select: {
+                id: true;
+                email: true;
+                githubLogin: true;
+                queryCount: true;
+                createdAt: true;
+                lastQueryAt: true;
+            };
+        }>;
+
         const [users, scanAgg, searchAgg, chatAgg] = await Promise.all([
             prisma.user.findMany({
                 select: {
@@ -275,8 +287,8 @@ async function getLoggedInUserStats(): Promise<LoggedInUserData[]> {
             });
         }
 
-        const rows = users
-            .map<LoggedInUserData>((user) => {
+        const rows = (users as UserRow[])
+            .map((user): LoggedInUserData => {
                 const scans = scanMap.get(user.id);
                 const searches = searchMap.get(user.id);
                 const chats = chatMap.get(user.id);
@@ -351,9 +363,9 @@ async function getReportFunnelMetrics(): Promise<ReportFunnelMetrics> {
     try {
         const totalsPipeline = kv.pipeline();
         REPORT_CONVERSION_EVENTS.forEach((event) => {
-            totalsPipeline.get<number>(`stats:report:${event}`);
+            totalsPipeline.get(`stats:report:${event}`);
         });
-        const totalValues = await totalsPipeline.exec<number[]>();
+        const totalValues = await totalsPipeline.exec() as Array<number | string | null>;
 
         const totals = emptyReportFunnelMetrics().totals;
         REPORT_CONVERSION_EVENTS.forEach((event, index) => {
@@ -364,11 +376,11 @@ async function getReportFunnelMetrics(): Promise<ReportFunnelMetrics> {
         const weeklyPipeline = kv.pipeline();
         for (const event of REPORT_CONVERSION_EVENTS) {
             for (const dayKey of dayKeys) {
-                weeklyPipeline.get<number>(`stats:report:${event}:${dayKey}`);
+                weeklyPipeline.get(`stats:report:${event}:${dayKey}`);
             }
         }
 
-        const weeklyValues = await weeklyPipeline.exec<number[]>();
+        const weeklyValues = await weeklyPipeline.exec() as Array<number | string | null>;
         const weekly = emptyReportFunnelMetrics().weekly;
 
         let cursor = 0;
@@ -457,7 +469,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
 
         const pipeline = kv.pipeline();
         sortedVisitorIds.forEach(id => pipeline.hgetall(`visitor:${id}`));
-        const visitorsDetails = await pipeline.exec<VisitorData[]>();
+        const visitorsDetails = await pipeline.exec() as Array<Partial<VisitorData> | null>;
 
         // Process visitors for the recent activity table
         const recentVisitors: VisitorData[] = [];
@@ -467,12 +479,13 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
         visitorsDetails.forEach((details, index) => {
             if (!details) return;
 
-            const visitor = {
-                ...details,
+            const visitor: VisitorData = {
                 id: sortedVisitorIds[index],
+                country: details.country ?? "Unknown",
+                device: details.device ?? "unknown",
                 lastSeen: Number(details.lastSeen),
-                firstSeen: Number(details.firstSeen || details.lastSeen),
-                queryCount: Number(details.queryCount || 0)
+                firstSeen: Number(details.firstSeen ?? details.lastSeen),
+                queryCount: Number(details.queryCount ?? 0),
             };
 
             recentVisitors.push(visitor);
@@ -487,9 +500,9 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
         const deviceKeys = await kv.keys("stats:device:*");
 
         const statsPipeline = kv.pipeline();
-        countryKeys.forEach(k => statsPipeline.get<number>(k));
-        deviceKeys.forEach(k => statsPipeline.get<number>(k));
-        const statsValues = await statsPipeline.exec<number[]>();
+        countryKeys.forEach((key) => statsPipeline.get(key));
+        deviceKeys.forEach((key) => statsPipeline.get(key));
+        const statsValues = await statsPipeline.exec() as Array<number | string | null>;
 
         const countryStats: Record<string, number> = {};
         const deviceStats: Record<string, number> = { mobile: 0, desktop: 0, unknown: 0 };

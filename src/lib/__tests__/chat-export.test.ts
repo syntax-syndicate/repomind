@@ -128,7 +128,7 @@ describe("convertChartsToImages", () => {
         const content = '```mermaid-json\n{"nodes":[],"edges":[]}\n```';
         const mockRender = vi.fn().mockResolvedValue("<svg>json diagram</svg>");
         const mockConverter = vi.fn().mockReturnValue("flowchart TD\n  A-->B");
-        const result = await convertChartsToImages(content, {
+        await convertChartsToImages(content, {
             renderMermaid: mockRender,
             convertMermaidJson: mockConverter,
         });
@@ -139,8 +139,7 @@ describe("convertChartsToImages", () => {
     it("keeps mermaid-json block when no converter provided", async () => {
         const block = '```mermaid-json\n{"nodes":[]}\n```';
         const mockRender = vi.fn();
-        const result = await convertChartsToImages(block, { renderMermaid: mockRender });
-        expect(result).toContain("mermaid-json");
+        expect(await convertChartsToImages(block, { renderMermaid: mockRender })).toContain("mermaid-json");
         expect(mockRender).not.toHaveBeenCalled();
     });
 });

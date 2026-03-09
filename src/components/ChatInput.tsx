@@ -1,6 +1,5 @@
 import { useRef, useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { toast } from "sonner";
 import { Send, Zap, Brain, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
