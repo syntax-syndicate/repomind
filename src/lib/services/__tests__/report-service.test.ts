@@ -81,6 +81,27 @@ describe("rankFindingsForTriage", () => {
         expect(ranked[0]).toBe(critical);
         expect(ranked[2]).toBe(low);
     });
+
+    it("sorts by exploitability tag before severity tie-breakers", () => {
+        const mediumExploit = makeFinding({
+            severity: "critical",
+            confidence: "high",
+            title: "Critical but medium exploitability",
+            exploitabilityTag: "medium",
+            file: "src/security/check.ts",
+        });
+        const highExploit = makeFinding({
+            severity: "high",
+            confidence: "medium",
+            title: "High exploitability path traversal",
+            exploitabilityTag: "high",
+            file: "src/http/files.ts",
+        });
+
+        const ranked = rankFindingsForTriage([mediumExploit, highExploit]);
+        expect(ranked[0]).toBe(highExploit);
+        expect(ranked[1]).toBe(mediumExploit);
+    });
 });
 
 describe("buildReportViewData", () => {

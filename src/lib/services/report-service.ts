@@ -49,6 +49,13 @@ const confidenceWeight: Record<NonNullable<SecurityFinding["confidence"]>, numbe
     low: 0,
 };
 
+const exploitabilityTagWeight: Record<NonNullable<SecurityFinding["exploitabilityTag"]>, number> = {
+    high: 100,
+    medium: 60,
+    low: 25,
+    unknown: 10,
+};
+
 function normalizeToken(input: string): string {
     return input.toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -187,11 +194,17 @@ export function findingFingerprint(finding: SecurityFinding): string {
 export function scoreFindingForTriage(finding: SecurityFinding): number {
     const baseSeverity = severityWeight[finding.severity] ?? 0;
     const confidence = finding.confidence ? confidenceWeight[finding.confidence] : 8;
-    return baseSeverity + confidence + exploitabilityScore(finding);
+    const exploitabilityTagScore = exploitabilityTagWeight[finding.exploitabilityTag ?? "unknown"] ?? 0;
+    return baseSeverity + confidence + exploitabilityScore(finding) + exploitabilityTagScore;
 }
 
 export function rankFindingsForTriage(findings: SecurityFinding[]): SecurityFinding[] {
     return [...findings].sort((a, b) => {
+        const exploitabilityDelta =
+            (exploitabilityTagWeight[b.exploitabilityTag ?? "unknown"] ?? 0) -
+            (exploitabilityTagWeight[a.exploitabilityTag ?? "unknown"] ?? 0);
+        if (exploitabilityDelta !== 0) return exploitabilityDelta;
+
         const scoreDelta = scoreFindingForTriage(b) - scoreFindingForTriage(a);
         if (scoreDelta !== 0) return scoreDelta;
 
@@ -394,6 +407,11 @@ export function buildReportViewData(scan: StoredScan, previousScan?: StoredScan 
     const rankedWithIndexes = eligibleEntries
         .map(({ finding, index }) => ({ finding, index, triageScore: scoreFindingForTriage(finding) }))
         .sort((a, b) => {
+            const exploitabilityDelta =
+                (exploitabilityTagWeight[b.finding.exploitabilityTag ?? "unknown"] ?? 0) -
+                (exploitabilityTagWeight[a.finding.exploitabilityTag ?? "unknown"] ?? 0);
+            if (exploitabilityDelta !== 0) return exploitabilityDelta;
+
             const scoreDelta = b.triageScore - a.triageScore;
             if (scoreDelta !== 0) return scoreDelta;
             const severityDelta = (severityWeight[b.finding.severity] ?? 0) - (severityWeight[a.finding.severity] ?? 0);

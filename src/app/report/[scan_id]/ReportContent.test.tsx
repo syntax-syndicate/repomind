@@ -110,6 +110,11 @@ describe("ReportContent", () => {
         expect(html).toContain("Talk to the Codebase");
         expect(html).toContain("Repository Profile");
         expect(html).toContain("Share Report");
+        expect(html).toContain("Security Health Score");
+        expect(html).toContain("Shareable Verified Snippets");
+        expect(html).toContain("Copy Verified Badge");
+        expect(html).toContain("Copy Report Snippet");
+        expect(html).toContain("Deep Scan Another Repo");
         expect(html).toContain("data-testid=\"report-actions-navbar\"");
         expect(html).toContain("sticky top-0 z-50");
         expect(html).not.toContain("Copy Global Prompt");

@@ -10,6 +10,7 @@ import {
     submitReportFalsePositive,
     trackReportConversion,
 } from "@/app/actions";
+import { DEEP_SCAN_PROMPT } from "@/lib/chat-constants";
 import { CodeBlock } from "@/components/CodeBlock";
 import {
     AlertCircle,
@@ -49,6 +50,26 @@ const verificationConfig = {
     AUTO_REJECTED_FALSE: { label: "Auto Rejected", className: "text-rose-300 border-rose-500/30 bg-rose-500/10" },
     INCONCLUSIVE_HIDDEN: { label: "Inconclusive", className: "text-amber-300 border-amber-500/30 bg-amber-500/10" },
     DETECTED: { label: "Detected", className: "text-indigo-300 border-indigo-500/30 bg-indigo-500/10" },
+} as const;
+
+const exploitabilityConfig = {
+    high: { label: "High Exploitability", className: "text-red-300 border-red-500/30 bg-red-500/10" },
+    medium: { label: "Medium Exploitability", className: "text-orange-300 border-orange-500/30 bg-orange-500/10" },
+    low: { label: "Low Exploitability", className: "text-blue-300 border-blue-500/30 bg-blue-500/10" },
+    unknown: { label: "Unknown Exploitability", className: "text-zinc-300 border-zinc-500/30 bg-zinc-500/10" },
+} as const;
+
+const evidenceTypeConfig = {
+    source: { label: "Source", className: "border-blue-500/25 bg-blue-500/10 text-blue-100", iconClass: "text-blue-300" },
+    sink: { label: "Sink", className: "border-red-500/25 bg-red-500/10 text-red-100", iconClass: "text-red-300" },
+    sanitizer: { label: "Sanitizer", className: "border-emerald-500/25 bg-emerald-500/10 text-emerald-100", iconClass: "text-emerald-300" },
+    context: { label: "Context", className: "border-zinc-500/25 bg-zinc-500/10 text-zinc-100", iconClass: "text-zinc-300" },
+} as const;
+
+const traceTypeConfig = {
+    source: { label: "Trace Source", className: "border-indigo-500/25 bg-indigo-500/10 text-indigo-100" },
+    flow: { label: "Trace Flow", className: "border-fuchsia-500/25 bg-fuchsia-500/10 text-fuchsia-100" },
+    sink: { label: "Trace Sink", className: "border-rose-500/25 bg-rose-500/10 text-rose-100" },
 } as const;
 
 const falsePositiveReasonOptions: Array<{
@@ -129,6 +150,55 @@ function VerificationBadge({ status }: { status?: ReportFindingView["finding"]["
     );
 }
 
+function clampScore(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+}
+
+function computeSecurityHealthScore(input: {
+    critical: number;
+    high: number;
+    medium: number;
+    low: number;
+    newFindings: number;
+    resolvedFindings: number;
+    exploitabilityHigh: number;
+}): {
+    score: number;
+    grade: "A" | "B" | "C" | "D" | "F";
+    label: string;
+    trend: "improving" | "stable" | "degrading";
+} {
+    const base = 100;
+    const penalty =
+        input.critical * 28 +
+        input.high * 16 +
+        input.medium * 8 +
+        input.low * 3 +
+        input.exploitabilityHigh * 4 +
+        input.newFindings * 2;
+    const recovery = input.resolvedFindings * 3;
+    const score = clampScore(Math.round(base - penalty + recovery), 0, 100);
+
+    const grade: "A" | "B" | "C" | "D" | "F" =
+        score >= 90 ? "A" :
+            score >= 80 ? "B" :
+                score >= 65 ? "C" :
+                    score >= 45 ? "D" : "F";
+
+    const label =
+        grade === "A" ? "Hardened posture" :
+            grade === "B" ? "Strong posture" :
+                grade === "C" ? "Needs improvement" :
+                    grade === "D" ? "Elevated risk" : "Critical attention needed";
+
+    const trendScore = input.resolvedFindings - input.newFindings;
+    const trend: "improving" | "stable" | "degrading" =
+        trendScore > 0 ? "improving" :
+            trendScore < 0 ? "degrading" : "stable";
+
+    return { score, grade, label, trend };
+}
+
 interface ReportContentProps {
     scan: StoredScan;
     priorScanDiff: PriorScanDiff;
@@ -158,6 +228,7 @@ export function ReportContent({
     reportExpiresAt,
 }: ReportContentProps) {
     const baseUrl = getCanonicalSiteUrl();
+    const defaultReportUrl = `${baseUrl}/report/${scan.id}`;
     const date = new Date(scan.timestamp);
     const [now, setNow] = useState(() => Date.now());
     const [showFixPromptModal, setShowFixPromptModal] = useState(false);
@@ -167,6 +238,9 @@ export function ReportContent({
     const [falsePositiveReason, setFalsePositiveReason] = useState<ReportFalsePositiveReason>("NOT_A_VULNERABILITY");
     const [falsePositiveDetails, setFalsePositiveDetails] = useState("");
     const [isMobileActionsOpen, setIsMobileActionsOpen] = useState(false);
+    const [showDeepScanRepoModal, setShowDeepScanRepoModal] = useState(false);
+    const [deepScanRepoInput, setDeepScanRepoInput] = useState("");
+    const [shareableUrl, setShareableUrl] = useState(defaultReportUrl);
 
     useEffect(() => {
         const intervalId = window.setInterval(() => {
@@ -175,6 +249,12 @@ export function ReportContent({
 
         return () => window.clearInterval(intervalId);
     }, []);
+
+    useEffect(() => {
+        if (typeof window !== "undefined" && window.location.href) {
+            setShareableUrl(window.location.href);
+        }
+    }, [defaultReportUrl]);
 
     const expiryState = useMemo(
         () => getReportExpiryState(reportExpiresAt, now),
@@ -189,6 +269,62 @@ export function ReportContent({
         const fpSet = new Set(topFixes.map((item) => item.fingerprint));
         return findingViews.filter((view) => fpSet.has(view.fingerprint)).slice(0, 3);
     }, [findingViews, topFixes]);
+    const exploitabilityHighCount = useMemo(
+        () => findingViews.filter((view) => view.finding.exploitabilityTag === "high").length,
+        [findingViews]
+    );
+    const verifiedSeverityTotals = useMemo(() => {
+        return findingViews.reduce(
+            (acc, view) => {
+                const severity = view.finding.severity;
+                if (severity in acc) {
+                    acc[severity as keyof typeof acc] += 1;
+                }
+                return acc;
+            },
+            { critical: 0, high: 0, medium: 0, low: 0, info: 0 }
+        );
+    }, [findingViews]);
+    const healthScore = useMemo(
+        () => computeSecurityHealthScore({
+            critical: verifiedSeverityTotals.critical,
+            high: verifiedSeverityTotals.high,
+            medium: verifiedSeverityTotals.medium,
+            low: verifiedSeverityTotals.low,
+            newFindings: priorScanDiff.new,
+            resolvedFindings: priorScanDiff.resolved,
+            exploitabilityHigh: exploitabilityHighCount,
+        }),
+        [
+            exploitabilityHighCount,
+            priorScanDiff.new,
+            priorScanDiff.resolved,
+            verifiedSeverityTotals.critical,
+            verifiedSeverityTotals.high,
+            verifiedSeverityTotals.low,
+            verifiedSeverityTotals.medium,
+        ]
+    );
+    const verifiedBadgeSnippet = useMemo(
+        () =>
+            `[![RepoMind Verified Security Scan](https://img.shields.io/badge/RepoMind-Verified%20Security%20Scan-22c55e?style=for-the-badge)](${shareableUrl})`,
+        [shareableUrl]
+    );
+    const verifiedReportSnippet = useMemo(
+        () =>
+            `RepoMind verified security report for ${scan.owner}/${scan.repo}: ${verifiedSeverityTotals.critical} critical, ${verifiedSeverityTotals.high} high, ${verifiedSeverityTotals.medium} medium, ${verifiedSeverityTotals.low} low. Security Health Score ${healthScore.score}/100 (${healthScore.grade}). ${shareableUrl}`,
+        [
+            healthScore.grade,
+            healthScore.score,
+            scan.owner,
+            scan.repo,
+            shareableUrl,
+            verifiedSeverityTotals.critical,
+            verifiedSeverityTotals.high,
+            verifiedSeverityTotals.low,
+            verifiedSeverityTotals.medium,
+        ]
+    );
 
     const openFixPromptModal = () => {
         if (isOutdated || findingViews.length === 0) return;
@@ -265,6 +401,56 @@ export function ReportContent({
         }
     };
 
+    const tryCopyToClipboard = async (value: string): Promise<boolean> => {
+        if (typeof navigator === "undefined" || !navigator.clipboard?.writeText) {
+            return false;
+        }
+        try {
+            await navigator.clipboard.writeText(value);
+            return true;
+        } catch {
+            return false;
+        }
+    };
+
+    const handleCopyVerifiedBadge = async () => {
+        const copied = await tryCopyToClipboard(verifiedBadgeSnippet);
+        if (!copied) {
+            toast.error("Unable to access clipboard");
+            return;
+        }
+        toast.success("Verified badge snippet copied");
+    };
+
+    const handleCopyVerifiedReportSnippet = async () => {
+        const copied = await tryCopyToClipboard(verifiedReportSnippet);
+        if (!copied) {
+            toast.error("Unable to access clipboard");
+            return;
+        }
+        toast.success("Report snippet copied");
+    };
+
+    const handleLaunchDeepScanAnotherRepo = () => {
+        const normalized = deepScanRepoInput
+            .trim()
+            .replace(/^https?:\/\/github\.com\//i, "")
+            .replace(/\/+$/, "")
+            .replace(/\.git$/i, "");
+
+        if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(normalized)) {
+            toast.error("Use repository format owner/repo");
+            return;
+        }
+
+        const href = `/chat?q=${encodeURIComponent(normalized)}&prompt=${encodeURIComponent(DEEP_SCAN_PROMPT)}`;
+        setShowDeepScanRepoModal(false);
+        setDeepScanRepoInput("");
+        if (typeof window !== "undefined") {
+            window.location.href = href;
+        }
+    };
+
     return (
         <div className="min-h-screen bg-black text-white p-4 md:p-8 selection:bg-indigo-500/30">
             <div className="max-w-4xl mx-auto space-y-8">
@@ -321,6 +507,27 @@ export function ReportContent({
                                         >
                                             <Copy className="w-4 h-4" />
                                             Get LLM-Ready Fix Prompt
+                                        </button>
+                                        <button
+                                            onClick={() => { void handleCopyVerifiedReportSnippet(); }}
+                                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-zinc-800 px-3.5 py-2 text-sm font-medium text-zinc-200 transition-all hover:bg-zinc-700"
+                                        >
+                                            <Copy className="w-4 h-4" />
+                                            Copy Report Snippet
+                                        </button>
+                                        <button
+                                            onClick={() => { void handleCopyVerifiedBadge(); }}
+                                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-zinc-800 px-3.5 py-2 text-sm font-medium text-zinc-200 transition-all hover:bg-zinc-700"
+                                        >
+                                            <Copy className="w-4 h-4" />
+                                            Copy Verified Badge
+                                        </button>
+                                        <button
+                                            onClick={() => setShowDeepScanRepoModal(true)}
+                                            className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-600/15 px-3.5 py-2 text-sm font-medium text-indigo-200 transition-all hover:bg-indigo-600/25"
+                                        >
+                                            <Shield className="w-4 h-4" />
+                                            Deep Scan Another Repo
                                         </button>
                                     </>
                                 )}
@@ -381,6 +588,33 @@ export function ReportContent({
                                         Get LLM-Ready Fix Prompt
                                     </button>
                                 )}
+                                {!isOutdated && (
+                                    <button
+                                        onClick={() => { void handleCopyVerifiedReportSnippet(); }}
+                                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-zinc-800 px-3.5 py-2 text-sm font-medium text-zinc-200 transition-all hover:bg-zinc-700"
+                                    >
+                                        <Copy className="w-4 h-4" />
+                                        Copy Report Snippet
+                                    </button>
+                                )}
+                                {!isOutdated && (
+                                    <button
+                                        onClick={() => { void handleCopyVerifiedBadge(); }}
+                                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/10 bg-zinc-800 px-3.5 py-2 text-sm font-medium text-zinc-200 transition-all hover:bg-zinc-700"
+                                    >
+                                        <Copy className="w-4 h-4" />
+                                        Copy Verified Badge
+                                    </button>
+                                )}
+                                {!isOutdated && (
+                                    <button
+                                        onClick={() => setShowDeepScanRepoModal(true)}
+                                        className="inline-flex items-center justify-center gap-2 rounded-lg border border-indigo-500/40 bg-indigo-600/15 px-3.5 py-2 text-sm font-medium text-indigo-200 transition-all hover:bg-indigo-600/25"
+                                    >
+                                        <Shield className="w-4 h-4" />
+                                        Deep Scan Another Repo
+                                    </button>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -419,6 +653,86 @@ export function ReportContent({
                                 Repository Profile
                             </Link>
                             <ExportButtons scan={scan} />
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <h3 className="text-lg font-medium text-zinc-100">Security Health Score</h3>
+                            <p className="mt-1 text-sm text-zinc-400">
+                                Posture score based on verified severity mix, high-exploitability signals, and scan trend.
+                            </p>
+                        </div>
+                        <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                            healthScore.trend === "improving"
+                                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                                : healthScore.trend === "degrading"
+                                    ? "border-red-500/30 bg-red-500/10 text-red-300"
+                                    : "border-zinc-500/30 bg-zinc-500/10 text-zinc-300"
+                        }`}>
+                            Trend: {healthScore.trend}
+                        </span>
+                    </div>
+                    <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-4">
+                        <div className="rounded-xl border border-indigo-500/20 bg-indigo-500/10 p-4 sm:col-span-2">
+                            <p className="text-xs uppercase tracking-wider text-indigo-300">Score</p>
+                            <div className="mt-2 flex items-baseline gap-2">
+                                <p className="text-4xl font-bold text-white">{healthScore.score}</p>
+                                <p className="text-sm text-zinc-300">/ 100</p>
+                                <p className="rounded-md border border-white/10 bg-zinc-900/70 px-2 py-0.5 text-xs font-semibold text-zinc-200">
+                                    Grade {healthScore.grade}
+                                </p>
+                            </div>
+                            <p className="mt-2 text-sm text-zinc-300">{healthScore.label}</p>
+                        </div>
+                        <div className="rounded-xl border border-red-500/20 bg-red-500/10 p-4">
+                            <p className="text-xs uppercase tracking-wider text-red-300">Critical + High</p>
+                            <p className="mt-1 text-2xl font-bold text-white">{verifiedSeverityTotals.critical + verifiedSeverityTotals.high}</p>
+                        </div>
+                        <div className="rounded-xl border border-orange-500/20 bg-orange-500/10 p-4">
+                            <p className="text-xs uppercase tracking-wider text-orange-300">High Exploitability</p>
+                            <p className="mt-1 text-2xl font-bold text-white">{exploitabilityHighCount}</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-zinc-900/70 p-6 space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                        <h3 className="text-lg font-medium text-zinc-100">Shareable Verified Snippets</h3>
+                        <span className="rounded-full border border-white/10 bg-zinc-950 px-2.5 py-1 text-xs text-zinc-400">
+                            For README, issues, and team updates
+                        </span>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            onClick={() => { void handleCopyVerifiedBadge(); }}
+                            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-800 px-3.5 py-2 text-sm font-medium text-zinc-200 transition-all hover:bg-zinc-700"
+                        >
+                            <Copy className="w-4 h-4" />
+                            Copy Verified Badge
+                        </button>
+                        <button
+                            onClick={() => { void handleCopyVerifiedReportSnippet(); }}
+                            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-zinc-800 px-3.5 py-2 text-sm font-medium text-zinc-200 transition-all hover:bg-zinc-700"
+                        >
+                            <Copy className="w-4 h-4" />
+                            Copy Report Snippet
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                        <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Badge Markdown</p>
+                            <pre className="overflow-auto rounded-xl border border-white/10 bg-zinc-950/70 p-4 text-xs text-zinc-300 whitespace-pre-wrap">
+                                {verifiedBadgeSnippet}
+                            </pre>
+                        </div>
+                        <div className="space-y-2">
+                            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Report Summary Snippet</p>
+                            <pre className="overflow-auto rounded-xl border border-white/10 bg-zinc-950/70 p-4 text-xs text-zinc-300 whitespace-pre-wrap">
+                                {verifiedReportSnippet}
+                            </pre>
                         </div>
                     </div>
                 </div>
@@ -520,6 +834,13 @@ export function ReportContent({
                     ) : (
                         findingViews.map((view) => {
                             const key = `${view.fingerprint}:${view.index}`;
+                            const exploitabilityTag = view.finding.exploitabilityTag ?? "unknown";
+                            const exploitabilityBadge = exploitabilityConfig[exploitabilityTag];
+                            const evidenceItems = (view.finding.evidence ?? []).slice(0, 6);
+                            const verificationSignalItems = (view.finding.verificationSignals ?? []).slice(0, 6);
+                            const traceItems = (view.finding.trace ?? []).slice(0, 6);
+                            const hasStructuredEvidence =
+                                evidenceItems.length > 0 || verificationSignalItems.length > 0 || traceItems.length > 0;
 
                             return (
                                 <div key={key} className="overflow-hidden rounded-xl border border-white/10 bg-zinc-900 shadow-lg" style={{ pageBreakInside: "avoid" }}>
@@ -532,6 +853,9 @@ export function ReportContent({
                                                 </span>
                                                 <ConfidenceBadge confidence={view.finding.confidence} />
                                                 <VerificationBadge status={view.finding.verificationStatus} />
+                                                <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${exploitabilityBadge.className}`}>
+                                                    {exploitabilityBadge.label}
+                                                </span>
                                                 {(view.finding.cwe || view.finding.cvss) && (
                                                     <span className="flex items-center gap-2 text-xs text-zinc-500">
                                                         {view.finding.cwe && <span>{view.finding.cwe}</span>}
@@ -554,10 +878,76 @@ export function ReportContent({
                                     </div>
 
                                     <div className="space-y-6 p-5">
-                                        <div className="space-y-2">
-                                            <h5 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Proof</h5>
-                                            <div className="whitespace-pre-wrap rounded-lg border border-white/10 bg-zinc-950/70 p-4 text-sm text-zinc-300">
-                                                {view.proof}
+                                        <div className="space-y-3">
+                                            <h5 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Evidence</h5>
+                                            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                                                {evidenceItems.map((evidence, evidenceIndex) => {
+                                                    const style = evidenceTypeConfig[evidence.type] ?? evidenceTypeConfig.context;
+                                                    return (
+                                                        <div
+                                                            key={`evidence:${key}:${evidenceIndex}`}
+                                                            className={`rounded-xl border p-3 ${style.className}`}
+                                                        >
+                                                            <p className={`text-[11px] font-semibold uppercase tracking-wider ${style.iconClass}`}>
+                                                                {style.label}
+                                                            </p>
+                                                            <p className="mt-2 text-sm leading-relaxed">
+                                                                {evidence.message}
+                                                            </p>
+                                                            <p className="mt-2 text-xs text-zinc-300">
+                                                                {typeof evidence.line === "number" ? `Line ${evidence.line}` : "Line not provided"}
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                })}
+                                                {verificationSignalItems.map((signal, signalIndex) => (
+                                                    <div
+                                                        key={`signal:${key}:${signalIndex}`}
+                                                        className={`rounded-xl border p-3 ${
+                                                            signal.passed
+                                                                ? "border-emerald-500/25 bg-emerald-500/10 text-emerald-100"
+                                                                : "border-amber-500/25 bg-amber-500/10 text-amber-100"
+                                                        }`}
+                                                    >
+                                                        <p className="text-[11px] font-semibold uppercase tracking-wider">
+                                                            Verifier Signal
+                                                        </p>
+                                                        <p className="mt-2 text-sm">
+                                                            {signal.name}: {signal.passed ? "pass" : "fail"}
+                                                        </p>
+                                                        <p className="mt-2 text-xs text-zinc-200">
+                                                            {signal.detail}
+                                                        </p>
+                                                    </div>
+                                                ))}
+                                                {traceItems.map((trace, traceIndex) => {
+                                                    const style = traceTypeConfig[trace.type] ?? traceTypeConfig.flow;
+                                                    return (
+                                                        <div
+                                                            key={`trace:${key}:${traceIndex}`}
+                                                            className={`rounded-xl border p-3 ${style.className}`}
+                                                        >
+                                                            <p className="text-[11px] font-semibold uppercase tracking-wider">
+                                                                {style.label}
+                                                            </p>
+                                                            <p className="mt-2 text-sm">
+                                                                {trace.detail}
+                                                            </p>
+                                                            <p className="mt-2 text-xs text-zinc-300">
+                                                                {typeof trace.line === "number" ? `Line ${trace.line}` : "Line not provided"}
+                                                            </p>
+                                                        </div>
+                                                    );
+                                                })}
+                                                {!hasStructuredEvidence && (
+                                                    <div className="rounded-xl border border-white/10 bg-zinc-950/70 p-4 text-sm text-zinc-300 md:col-span-2">
+                                                        No structured evidence cards were generated for this finding. See proof summary below.
+                                                    </div>
+                                                )}
+                                            </div>
+                                            <div className="space-y-2 rounded-lg border border-white/10 bg-zinc-950/70 p-4">
+                                                <h6 className="text-[11px] font-semibold uppercase tracking-wider text-zinc-500">Proof Summary</h6>
+                                                <pre className="whitespace-pre-wrap text-sm text-zinc-300">{view.proof}</pre>
                                             </div>
                                             <p className="text-xs text-zinc-500">{view.confidenceRationale}</p>
                                             {view.finding.verificationRationale && (
@@ -652,6 +1042,92 @@ export function ReportContent({
                                 </button>
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {showDeepScanRepoModal && (
+                <div className="fixed inset-0 z-[115] flex items-center justify-center p-4">
+                    <div
+                        className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+                        onClick={() => {
+                            setShowDeepScanRepoModal(false);
+                            setDeepScanRepoInput("");
+                        }}
+                    />
+                    <div className="relative w-full max-w-xl rounded-2xl border border-white/10 bg-zinc-950 shadow-2xl">
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                handleLaunchDeepScanAnotherRepo();
+                            }}
+                            className="space-y-5 p-6"
+                        >
+                            <div className="space-y-2">
+                                <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-indigo-300">
+                                    <Shield className="w-3.5 h-3.5" />
+                                    Deep Scan
+                                </div>
+                                <h3 className="text-xl font-semibold text-white">Scan Another Repository</h3>
+                                <p className="text-sm text-zinc-400">
+                                    Enter any GitHub repository and launch a deep verified scan flow in chat.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <label htmlFor="deep-scan-repo" className="text-sm font-medium text-zinc-200">
+                                    Repository
+                                </label>
+                                <input
+                                    id="deep-scan-repo"
+                                    value={deepScanRepoInput}
+                                    onChange={(event) => setDeepScanRepoInput(event.target.value)}
+                                    placeholder="owner/repo or https://github.com/owner/repo"
+                                    className="w-full rounded-xl border border-white/10 bg-zinc-900 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:border-indigo-500/50 focus:outline-none"
+                                    autoFocus
+                                />
+                                <p className="text-xs text-zinc-500">
+                                    We normalize GitHub URLs automatically and start the deep scan prompt for that repository.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
+                                <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Try examples</p>
+                                <div className="flex flex-wrap gap-2">
+                                    {["vercel/next.js", "supabase/supabase", "langchain-ai/langchainjs"].map((exampleRepo) => (
+                                        <button
+                                            key={exampleRepo}
+                                            type="button"
+                                            onClick={() => setDeepScanRepoInput(exampleRepo)}
+                                            className="rounded-full border border-white/10 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
+                                        >
+                                            {exampleRepo}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowDeepScanRepoModal(false);
+                                        setDeepScanRepoInput("");
+                                    }}
+                                    className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-zinc-900 px-4 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:bg-zinc-800"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={deepScanRepoInput.trim().length === 0}
+                                    className="inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                                >
+                                    <Shield className="w-4 h-4" />
+                                    Launch Deep Scan
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
