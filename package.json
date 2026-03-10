@@ -18,7 +18,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "node scripts/prisma-deploy.mjs",
-    "backfill:kv": "node scripts/backfill-kv-to-postgres.mjs"
+    "backfill:kv": "node scripts/backfill-kv-to-postgres.mjs",
+    "analytics:estimate-gap": "node scripts/estimate-analytics-gap.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
