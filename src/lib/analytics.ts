@@ -473,6 +473,24 @@ export async function resetReportConversionMetrics(): Promise<void> {
 /**
  * Fetch aggregated analytics data for the dashboard
  */
+
+async function getManualAnalyticsAdjustments(): Promise<{ visitors: number; queries: number }> {
+    try {
+        const [visitorsAdjustment, queriesAdjustment] = await Promise.all([
+            kv.get<number>("stats:adjustment:visitors"),
+            kv.get<number>("stats:adjustment:queries"),
+        ]);
+
+        return {
+            visitors: Number(visitorsAdjustment || 0),
+            queries: Number(queriesAdjustment || 0),
+        };
+    } catch (error) {
+        console.error("Failed to fetch manual analytics adjustments:", error);
+        return { visitors: 0, queries: 0 };
+    }
+}
+
 export async function getAnalyticsData(): Promise<AnalyticsData> {
     try {
         // Parallelize fetching independent data
@@ -484,6 +502,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
             loggedInUsers,
             reportFunnel,
             falsePositiveReview,
+            manualAdjustments,
         ] = await Promise.all([
             kv.scard("visitors"),
             kv.get<number>("queries:total"),
@@ -507,6 +526,7 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
                     recentSubmissions: [],
                 };
             }),
+            getManualAnalyticsAdjustments(),
         ]);
 
         // Record usage and get history
@@ -575,8 +595,8 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
         recentVisitors.sort((a, b) => b.lastSeen - a.lastSeen);
 
         return {
-            totalVisitors: totalVisitors || 0,
-            totalQueries: totalQueries || 0,
+            totalVisitors: (totalVisitors || 0) + manualAdjustments.visitors,
+            totalQueries: (totalQueries || 0) + manualAdjustments.queries,
             activeUsers24h,
             totalLoggedInUsers: loggedInUsers.length,
             deviceStats,
@@ -621,14 +641,15 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
  */
 export async function getPublicStats() {
     try {
-        const [totalVisitors, totalQueries] = await Promise.all([
+        const [totalVisitors, totalQueries, manualAdjustments] = await Promise.all([
             kv.scard("visitors"),
             kv.get<number>("queries:total"),
+            getManualAnalyticsAdjustments(),
         ]);
 
         return {
-            totalVisitors: totalVisitors || 0,
-            totalQueries: totalQueries || 0,
+            totalVisitors: (totalVisitors || 0) + manualAdjustments.visitors,
+            totalQueries: (totalQueries || 0) + manualAdjustments.queries,
         };
     } catch (error: unknown) {
         console.error("Failed to fetch public stats from KV:", error);
