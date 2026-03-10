@@ -117,9 +117,10 @@ We are constantly improving RepoMind. Check out our **[CHANGELOG.md](CHANGELOG.m
 
 ![Security Scan Example](/public/quick_scan_example.png)
 
-- **Vulnerability Scanning**: Detect SQL injections, XSS, and auth flaws without setting up CI/CD pipelines.
-- **AI-Powered Triage**: Get context-aware explanations of *why* code is vulnerable, not just static alerts.
-- **Fix Recommendations**: Receive copy-pasteable code patches to resolve security issues.
+- **Vulnerability Scanning**: Detect SQL injections, XSS, auth flaws, secrets, config issues, and vulnerable dependencies without setting up CI/CD pipelines.
+- **Auto Verification Gate**: Findings are automatically verified with rule-family checks before they are shown to users.
+- **Verified-Only Reports**: Reports and fix prompts only include `AUTO_VERIFIED_TRUE` findings.
+- **Lifecycle + Closure Gate**: Findings move through lifecycle states and can be auto-closed only after regression checks + clean rescan.
 
 #### Vulnerability Scanning Workflow
 
@@ -150,15 +151,20 @@ graph TD
     Dep --> Rank
     Rank[Confidence Score + Fingerprint Dedupe] --> AIToggle{AI Assist Enabled?}
 
-    AIToggle -->|No| Finalize
+    AIToggle -->|No| Verify
     AIToggle -->|Yes| AIPass[Redact Sensitive Values + AI Validation]
     AIPass --> Merge[Merge AI + Deterministic Findings]
-    Merge --> Finalize[Save Scan + Render Report]
+    Merge --> Verify[Automatic Verification Gate]
+    Verify -->|Verified True| Finalize[Save Scan + Render Verified-Only Report]
+    Verify -->|Rejected / Inconclusive| Hidden[Hidden from User Report + Telemetry]
     Cached --> Finalize
+    Finalize --> CloseGate[Fix Verification: Regression Gate + Rescan + Auto Signoff]
 ```
 
 - **Quick Scan**: Deterministic-first checks optimized for speed (up to 20 files).
 - **Deep Scan**: Broader deterministic analysis (up to 60 files), with optional AI assistance.
+- **Verification States**: `DETECTED`, `AUTO_VERIFIED_TRUE`, `AUTO_REJECTED_FALSE`, `INCONCLUSIVE_HIDDEN`, `OPEN`, `CLOSED`.
+- **Rollback Controls**: Verification/reporting/closure gates are flag-driven for rapid fallback.
 
 ###  Mobile-First Experience
 - **Analyze on the Go**: The only advanced code analysis tool optimized for mobile browsers.
@@ -255,6 +261,17 @@ We don't just analyze code; we analyze **coders**. RepoMind is the only platform
 
     # Internal job auth (email retries)
     EMAIL_RETRY_JOB_SECRET="your_internal_retry_secret"
+
+    # Security verification pipeline (optional)
+    SECURITY_VERIFICATION_GATE="true"
+    SECURITY_VERIFIED_ONLY_REPORTS="true"
+    SECURITY_AUTO_CLOSURE_GATE="true"
+    SECURITY_DEPENDENCY_LIVE_ADVISORY="true"
+    SECURITY_VERIFICATION_AUTO_THRESHOLD="0.75"
+    SECURITY_VERIFICATION_REJECT_THRESHOLD="0.45"
+    SECURITY_VERIFICATION_BENCH_PRECISION="0.8"
+    SECURITY_VERIFICATION_BENCH_RECALL="0.75"
+    SECURITY_VERIFIED_CANARY_PERCENT="100"
    ```
 
 4. **Run the development server**
@@ -288,8 +305,8 @@ Ask: "What's his coding style like?"
 ```
 Enter: "your-org/your-repo"
 Open DevTools → Security Scan
-Review vulnerabilities by severity
-Get actionable fix recommendations
+Review verified vulnerabilities by severity
+Get actionable fix recommendations from verified findings only
 ```
 
 ### Code Quality Check

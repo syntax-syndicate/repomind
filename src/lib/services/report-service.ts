@@ -97,11 +97,22 @@ function exploitabilityScore(finding: SecurityFinding): number {
 }
 
 function summarizeEvidence(finding: SecurityFinding): string[] {
+    const output: string[] = [];
+
     if (Array.isArray(finding.evidence) && finding.evidence.length > 0) {
-        return finding.evidence
+        output.push(...finding.evidence
             .slice(0, 3)
-            .map((e) => `${e.message}${typeof e.line === "number" ? ` (line ${e.line})` : ""}`);
+            .map((e) => `${e.message}${typeof e.line === "number" ? ` (line ${e.line})` : ""}`));
     }
+
+    if (Array.isArray(finding.verificationSignals) && finding.verificationSignals.length > 0) {
+        output.push(...finding.verificationSignals
+            .slice(0, 3)
+            .map((signal) => `Verifier ${signal.name}: ${signal.passed ? "pass" : "fail"} (${signal.detail})`));
+    }
+
+    if (output.length > 0) return output;
+
     return [
         `Detector rule: ${finding.ruleId ?? "unlabeled"}${finding.engine ? ` (${finding.engine})` : ""}.`,
     ];
@@ -152,8 +163,14 @@ function buildConfidenceRationale(finding: SecurityFinding): string {
     const pct = Math.round(score * 100);
     const evidenceCount = Array.isArray(finding.evidence) ? finding.evidence.length : 0;
     const evidenceText = evidenceCount > 0 ? `${evidenceCount} evidence signal${evidenceCount === 1 ? "" : "s"}` : "rule match";
+    const verificationLabel = finding.verificationStatus
+        ? ` Verification: ${finding.verificationStatus}${finding.gateDecision ? ` / gate=${finding.gateDecision}` : ""}.`
+        : "";
+    const verificationScore = typeof finding.verificationScore === "number"
+        ? ` Verifier score: ${Math.round(finding.verificationScore * 100)}%.`
+        : "";
 
-    return `Confidence: ${finding.confidence ?? "unlabeled"} (${pct}%). Source: ${finding.engine ?? "scanner"}${finding.ruleId ? ` / ${finding.ruleId}` : ""} with ${evidenceText}.`;
+    return `Confidence: ${finding.confidence ?? "unlabeled"} (${pct}%). Source: ${finding.engine ?? "scanner"}${finding.ruleId ? ` / ${finding.ruleId}` : ""} with ${evidenceText}.${verificationLabel}${verificationScore}`;
 }
 
 export function findingFingerprint(finding: SecurityFinding): string {
@@ -290,6 +307,8 @@ function buildGlobalFindingSection(view: ReportFindingView): string {
         `- Type: ${view.finding.type}`,
         `- Location: ${view.finding.file}${view.finding.line ? `:${view.finding.line}` : ""}`,
         `- Confidence: ${view.finding.confidence ?? "unscored"}`,
+        `- Verification: ${view.finding.verificationStatus ?? "legacy-unverified"}${view.finding.gateDecision ? ` (${view.finding.gateDecision})` : ""}`,
+        `- Exploitability: ${view.finding.exploitabilityTag ?? "unknown"}`,
         `- Proof:\n${view.proof}`,
         `- Impact: ${view.impact}`,
         `- Recommendation: ${view.finding.recommendation}`,
@@ -364,8 +383,16 @@ export function buildGlobalChatHref(owner: string, repo: string, prompt: string)
 }
 
 export function buildReportViewData(scan: StoredScan, previousScan?: StoredScan | null): ReportViewData {
-    const rankedWithIndexes = scan.findings
-        .map((finding, index) => ({ finding, index, triageScore: scoreFindingForTriage(finding) }))
+    const eligibleEntries = scan.findings
+        .map((finding, index) => ({ finding, index }))
+        .filter(({ finding }) => {
+            if (!finding.verificationStatus) return true;
+            return finding.verificationStatus === "AUTO_VERIFIED_TRUE" && finding.gateDecision !== "exclude";
+        });
+    const eligibleFindings = eligibleEntries.map((entry) => entry.finding);
+
+    const rankedWithIndexes = eligibleEntries
+        .map(({ finding, index }) => ({ finding, index, triageScore: scoreFindingForTriage(finding) }))
         .sort((a, b) => {
             const scoreDelta = b.triageScore - a.triageScore;
             if (scoreDelta !== 0) return scoreDelta;
@@ -386,7 +413,11 @@ export function buildReportViewData(scan: StoredScan, previousScan?: StoredScan 
         chatHref: buildFindingChatHref(scan.owner, scan.repo, finding),
     }));
 
-    const priorScanDiff = computePriorScanDiff(scan.findings, previousScan?.findings ?? null);
+    const previousEligible = previousScan?.findings?.filter((finding) => {
+        if (!finding.verificationStatus) return true;
+        return finding.verificationStatus === "AUTO_VERIFIED_TRUE" && finding.gateDecision !== "exclude";
+    }) ?? null;
+    const priorScanDiff = computePriorScanDiff(eligibleFindings, previousEligible);
     const globalFixPrompt = buildGlobalFixPrompt(scan, findingViews);
 
     return {

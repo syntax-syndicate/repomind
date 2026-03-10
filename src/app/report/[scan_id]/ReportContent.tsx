@@ -42,6 +42,15 @@ const confidenceConfig = {
     low: { label: "Low Confidence", className: "text-zinc-300 border-zinc-500/30 bg-zinc-500/10" },
 } as const;
 
+const verificationConfig = {
+    AUTO_VERIFIED_TRUE: { label: "Verified True", className: "text-emerald-300 border-emerald-500/30 bg-emerald-500/10" },
+    OPEN: { label: "Open", className: "text-emerald-300 border-emerald-500/30 bg-emerald-500/10" },
+    CLOSED: { label: "Closed", className: "text-zinc-300 border-zinc-600 bg-zinc-700/30" },
+    AUTO_REJECTED_FALSE: { label: "Auto Rejected", className: "text-rose-300 border-rose-500/30 bg-rose-500/10" },
+    INCONCLUSIVE_HIDDEN: { label: "Inconclusive", className: "text-amber-300 border-amber-500/30 bg-amber-500/10" },
+    DETECTED: { label: "Detected", className: "text-indigo-300 border-indigo-500/30 bg-indigo-500/10" },
+} as const;
+
 const falsePositiveReasonOptions: Array<{
     value: ReportFalsePositiveReason;
     label: string;
@@ -96,6 +105,23 @@ function ConfidenceBadge({ confidence }: { confidence?: ReportFindingView["findi
     }
 
     const config = confidenceConfig[confidence];
+    return (
+        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${config.className}`}>
+            {config.label}
+        </span>
+    );
+}
+
+function VerificationBadge({ status }: { status?: ReportFindingView["finding"]["verificationStatus"] }) {
+    if (!status) {
+        return (
+            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border border-zinc-700 bg-zinc-800 text-zinc-300">
+                Legacy Finding
+            </span>
+        );
+    }
+
+    const config = verificationConfig[status] ?? verificationConfig.DETECTED;
     return (
         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold border ${config.className}`}>
             {config.label}
@@ -466,11 +492,15 @@ export function ReportContent({
                                                 </span>
                                                 <SeverityBadge severity={view.finding.severity as keyof typeof severityConfig} />
                                                 <ConfidenceBadge confidence={view.finding.confidence} />
+                                                <VerificationBadge status={view.finding.verificationStatus} />
                                             </div>
                                             <p className="text-sm font-medium text-zinc-100">{view.finding.title}</p>
                                             <p className="text-xs text-zinc-400">
                                                 {view.finding.file}{view.finding.line ? `:${view.finding.line}` : ""} • Triage score {view.triageScore}
                                             </p>
+                                            {view.finding.exploitabilityTag && (
+                                                <p className="text-xs text-zinc-400">Exploitability: {view.finding.exploitabilityTag}</p>
+                                            )}
                                             <p className="text-sm text-zinc-300">{view.impact}</p>
                                         </div>
                                     </div>
@@ -501,6 +531,7 @@ export function ReportContent({
                                                     {view.finding.type}
                                                 </span>
                                                 <ConfidenceBadge confidence={view.finding.confidence} />
+                                                <VerificationBadge status={view.finding.verificationStatus} />
                                                 {(view.finding.cwe || view.finding.cvss) && (
                                                     <span className="flex items-center gap-2 text-xs text-zinc-500">
                                                         {view.finding.cwe && <span>{view.finding.cwe}</span>}
@@ -529,6 +560,16 @@ export function ReportContent({
                                                 {view.proof}
                                             </div>
                                             <p className="text-xs text-zinc-500">{view.confidenceRationale}</p>
+                                            {view.finding.verificationRationale && (
+                                                <p className="text-xs text-zinc-500">
+                                                    Verification: {view.finding.verificationRationale}
+                                                </p>
+                                            )}
+                                            {view.finding.exploitabilityTag && (
+                                                <p className="text-xs text-zinc-500">
+                                                    Exploitability tag: {view.finding.exploitabilityTag}
+                                                </p>
+                                            )}
                                         </div>
 
                                         <div className="space-y-2">

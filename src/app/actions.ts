@@ -77,6 +77,11 @@ import {
     createFalsePositiveSubmission,
     updateFalsePositiveStatus,
 } from "@/lib/services/report-false-positives";
+import { saveScanFindingVerificationRecords } from "@/lib/services/finding-verification-store";
+import {
+    finalizeFixVerificationRun,
+    startFixVerificationRun,
+} from "@/lib/services/fix-verification";
 import { prisma } from "@/lib/db";
 
 const FALSE_POSITIVE_REASONS = new Set<ReportFalsePositiveReason>([
@@ -502,9 +507,21 @@ export async function scanRepositoryVulnerabilities(
         console.log(`🧠 Security Scan Cache Hit: ${owner}/${repo}`);
         result = {
             ...cachedResult,
+            hiddenFindings: cachedResult.hiddenFindings ?? [],
+            rejectedFindings: cachedResult.rejectedFindings ?? [],
+            verificationRecords: cachedResult.verificationRecords ?? [],
             meta: {
                 ...cachedResult.meta,
                 fromCache: true,
+                verifierStats: cachedResult.meta?.verifierStats ?? {
+                    detected: cachedResult.summary?.total ?? cachedResult.findings?.length ?? 0,
+                    verifiedTrue: cachedResult.findings?.length ?? 0,
+                    rejectedFalse: 0,
+                    inconclusiveHidden: 0,
+                    canaryApplied: true,
+                    verificationGateEnabled: false,
+                    verifiedOnlyReportsEnabled: false,
+                },
             },
         };
     } else {
@@ -537,6 +554,15 @@ export async function scanRepositoryVulnerabilities(
             summary: result.summary,
             findings: result.findings,
         }, userId);
+
+        if (scanId && result.verificationRecords.length > 0) {
+            await saveScanFindingVerificationRecords({
+                scanId,
+                owner,
+                repo,
+                records: result.verificationRecords,
+            });
+        }
     } catch (e) {
         console.error("Failed to save scan to KV:", e);
     }
@@ -730,6 +756,30 @@ export async function updateReportFalsePositiveReviewStatus(input: {
         status: input.status,
         reviewedByUserId: userId ?? null,
     });
+}
+
+export async function startFindingFixVerification(input: {
+    scanId?: string;
+    findingFingerprint: string;
+    changedFiles: string[];
+}) {
+    const session = await auth();
+    const userId = getSessionUserId(session);
+
+    return startFixVerificationRun(
+        input.findingFingerprint,
+        input.changedFiles,
+        {
+            scanId: input.scanId,
+            requestedByUserId: userId ?? null,
+        }
+    );
+}
+
+export async function finalizeFindingFixVerification(input: {
+    runId: string;
+}) {
+    return finalizeFixVerificationRun(input.runId);
 }
 
 export async function resetAdminReportFunnel() {

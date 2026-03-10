@@ -237,9 +237,9 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
 
             let content = "";
             if (summary.total === 0) {
-                content = `✅ **Security scan complete!**\n\nI've comprehensively scanned the **core repository files** and found **no security vulnerabilities**.\n\nYour code looks secure! The scan checked for:\n- SQL injection vulnerabilities\n- Cross-site scripting (XSS)\n- Unsafe child_process usage\n- Hardcoded secrets\n- Weak cryptographic algorithms\n- Command injection\n\nKeep up the good security practices! 🔒`;
+                content = `✅ **Security scan complete!**\n\nI've comprehensively scanned the **core repository files** and found **no verified security vulnerabilities**.\n\nYour code looks secure! The scan checked for:\n- SQL injection vulnerabilities\n- Cross-site scripting (XSS)\n- Unsafe child_process usage\n- Hardcoded secrets\n- Weak cryptographic algorithms\n- Command injection\n\nKeep up the good security practices! 🔒`;
             } else {
-                content = `⚠️ **Security scan complete!**\n\nI've comprehensively scanned the **core repository files** and found **${summary.total} potential issue${summary.total !== 1 ? "s" : ""}**.\n\n`;
+                content = `⚠️ **Security scan complete!**\n\nI've comprehensively scanned the **core repository files** and found **${summary.total} verified vulnerabilit${summary.total !== 1 ? "ies" : "y"}**.\n\n`;
 
                 if (summary.critical > 0) content += `🔴 **${summary.critical} Critical**\n`;
                 if (summary.high > 0) content += `🟠 **${summary.high} High**\n`;

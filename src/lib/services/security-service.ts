@@ -22,6 +22,11 @@ import {
     SECURITY_ENGINE_VERSION,
     SECURITY_SCAN_FILE_LIMITS,
 } from "@/lib/security-scan-config";
+import {
+    verifyDetectedFindings,
+    type FindingVerificationRecord,
+    type VerifierStats,
+} from "@/lib/services/security-verification";
 
 const DEPENDENCY_FILES = new Set(["package.json", "package-lock.json", "yarn.lock", "pnpm-lock.yaml"]);
 
@@ -227,6 +232,9 @@ export async function runSecurityScan(
     allFilePaths: string[] = []
 ): Promise<{
     findings: SecurityFinding[];
+    hiddenFindings: SecurityFinding[];
+    rejectedFindings: SecurityFinding[];
+    verificationRecords: FindingVerificationRecord[];
     summary: ScanSummary & { debug?: Record<string, number> };
     grouped: Record<string, SecurityFinding[]>;
     meta: {
@@ -243,6 +251,7 @@ export async function runSecurityScan(
         fromCache: boolean;
         timings: Record<string, number>;
         analyzerStats: Record<string, number>;
+        verifierStats: VerifierStats;
     };
 }> {
     const startedAt = Date.now();
@@ -328,8 +337,14 @@ export async function runSecurityScan(
     const allFindings = deduplicateFindings([...deterministicFindings, ...aiFindings]);
     const filtered = allFindings.filter((finding) => findingScore(finding) >= config.confidenceThreshold);
     const withSnippets = attachSnippets(filtered, filesWithContent);
+    const verification = await verifyDetectedFindings({
+        scanId: `${owner}/${repo}:${Date.now()}`,
+        owner,
+        repo,
+        findings: withSnippets,
+    });
 
-    const summary = getScanSummary(withSnippets) as ScanSummary & { debug?: Record<string, number> };
+    const summary = getScanSummary(verification.verifiedFindings) as ScanSummary & { debug?: Record<string, number> };
     summary.debug = {
         filesReceived: files.length,
         codeFilesFiltered: codeFiles.length,
@@ -340,12 +355,18 @@ export async function runSecurityScan(
         aiFindings: aiFindings.length,
         afterDedup: allFindings.length,
         afterConfidenceFilter: filtered.length,
+        verifiedVisibleFindings: verification.verifiedFindings.length,
+        hiddenInconclusiveFindings: verification.hiddenFindings.length,
+        rejectedFindings: verification.rejectedFindings.length,
     };
 
     return {
-        findings: withSnippets,
+        findings: verification.verifiedFindings,
+        hiddenFindings: verification.hiddenFindings,
+        rejectedFindings: verification.rejectedFindings,
+        verificationRecords: verification.records,
         summary,
-        grouped: groupBySeverity(withSnippets),
+        grouped: groupBySeverity(verification.verifiedFindings),
         meta: {
             depth: config.analysisProfile,
             analysisProfile: config.analysisProfile,
@@ -364,6 +385,7 @@ export async function runSecurityScan(
                 aiMs: Date.now() - aiStartedAt,
             },
             analyzerStats: deterministic.analyzerStats,
+            verifierStats: verification.stats,
         },
     };
 }

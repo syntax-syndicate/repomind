@@ -11,6 +11,21 @@ import * as t from "@babel/types";
 
 type SecuritySeverity = "critical" | "high" | "medium" | "low" | "info";
 type SecurityConfidence = "high" | "medium" | "low";
+export type SecurityVerificationStatus =
+    | "DETECTED"
+    | "AUTO_VERIFIED_TRUE"
+    | "AUTO_REJECTED_FALSE"
+    | "INCONCLUSIVE_HIDDEN"
+    | "OPEN"
+    | "CLOSED";
+export type SecurityGateDecision = "include" | "exclude";
+
+export interface SecurityVerificationSignal {
+    name: string;
+    passed: boolean;
+    detail: string;
+    weight?: number;
+}
 
 export interface SecurityEvidence {
     type: "source" | "sink" | "sanitizer" | "context";
@@ -44,6 +59,12 @@ export interface SecurityFinding {
     confidenceScore?: number;
     evidence?: SecurityEvidence[];
     trace?: SecurityTraceStep[];
+    verificationStatus?: SecurityVerificationStatus;
+    verificationSignals?: SecurityVerificationSignal[];
+    verificationScore?: number;
+    verificationRationale?: string;
+    gateDecision?: SecurityGateDecision;
+    exploitabilityTag?: "high" | "medium" | "low" | "unknown";
 }
 
 export interface ScanSummary {
