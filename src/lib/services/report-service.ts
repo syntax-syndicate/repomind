@@ -395,6 +395,18 @@ export function buildGlobalChatHref(owner: string, repo: string, prompt: string)
     return `/chat?q=${encodeURIComponent(`${owner}/${repo}`)}&prompt=${encodeURIComponent(prompt)}`;
 }
 
+function buildRepoProfileHref(owner: string, repo: string): string {
+    return `/repo/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+}
+
+function buildAbsoluteUrlFromOrigin(baseUrl: string, relativePath: string): string {
+    try {
+        return new URL(relativePath, new URL(baseUrl).origin).toString();
+    } catch {
+        return relativePath;
+    }
+}
+
 export function buildReportViewData(scan: StoredScan, previousScan?: StoredScan | null): ReportViewData {
     const eligibleEntries = scan.findings
         .map((finding, index) => ({ finding, index }))
@@ -488,6 +500,7 @@ export function buildOutreachPack(scan: StoredScan, shareUrl: string): OutreachP
         reportView.findingViews.find(isHighPriorityOutreachCandidate) ?? reportView.findingViews[0] ?? null;
     const strongestImpact = strongestFinding?.impact ?? "No validated findings were available to include.";
     const repoHook = inferInterestingAreaFromFinding(strongestFinding);
+    const repoProfileUrl = buildAbsoluteUrlFromOrigin(shareUrl, buildRepoProfileHref(scan.owner, scan.repo));
 
     const maintainerNote = [
         `Hi ${scan.owner} maintainers,`,
@@ -505,6 +518,7 @@ export function buildOutreachPack(scan: StoredScan, shareUrl: string): OutreachP
         `Impact: ${strongestImpact}`,
         "",
         `Private report link (expires automatically): ${shareUrl}`,
+        `Repo profile: ${repoProfileUrl}`,
         "",
         "You can review the full findings and supporting detail in the private report link above.",
     ].join("\n");

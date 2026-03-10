@@ -212,5 +212,6 @@ describe("buildOutreachPack", () => {
         expect(outreach.shareUrl).toContain("/report/shared/");
         expect(outreach.outreachMessage).toContain("One finding that stood out most");
         expect(outreach.outreachMessage).toContain("review the full findings");
+        expect(outreach.outreachMessage).toContain("Repo profile: https://repomind.in/repo/acme/widget");
     });
 });
