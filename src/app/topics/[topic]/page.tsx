@@ -1,10 +1,8 @@
 import { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import fs from 'node:fs';
-import path from 'node:path';
 import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Star, FileCode } from 'lucide-react';
-import { unstable_cache } from 'next/cache';
+import { getReposForTopic, isIndexableTopic } from '@/lib/repo-catalog';
 
 interface Props {
     params: Promise<{
@@ -14,92 +12,33 @@ interface Props {
 
 export const revalidate = 604800;
 
-interface TopicRepository {
-    owner: string;
-    repo: string;
-    stars: number;
-    description: string | null;
-    topics: string[];
-    language: string | null;
-}
-
-function isTopicRepository(value: unknown): value is TopicRepository {
-    if (!value || typeof value !== "object") return false;
-    const item = value as Partial<TopicRepository>;
-    return typeof item.owner === "string" &&
-        typeof item.repo === "string" &&
-        typeof item.stars === "number" &&
-        Array.isArray(item.topics);
-}
-
-const getTopicRepoIndex = unstable_cache(
-    async (): Promise<Record<string, TopicRepository[]>> => {
-        try {
-            const dataPath = path.join(process.cwd(), 'public', 'data', 'top-repos.json');
-            const fileContent = await fs.promises.readFile(dataPath, 'utf8');
-            const parsed = JSON.parse(fileContent) as unknown;
-            const repos = Array.isArray(parsed) ? parsed.filter(isTopicRepository) : [];
-            const index: Record<string, TopicRepository[]> = {};
-
-            for (const repo of repos) {
-                const normalizedTopics = new Set(
-                    repo.topics
-                        .filter((topic): topic is string => typeof topic === 'string' && topic.trim().length > 0)
-                        .map((topic) => topic.toLowerCase())
-                );
-
-                for (const topic of normalizedTopics) {
-                    if (!index[topic]) {
-                        index[topic] = [];
-                    }
-                    index[topic].push(repo);
-                }
-            }
-
-            for (const [topic, topicRepos] of Object.entries(index)) {
-                topicRepos.sort((a, b) => b.stars - a.stars);
-                index[topic] = topicRepos.slice(0, 50);
-            }
-
-            return index;
-        } catch (error) {
-            console.error("Error building topic repository index:", error);
-            return {};
-        }
-    },
-    ['topics-repo-index'],
-    {
-        revalidate: 604800,
-        tags: ['topics-repo-index']
-    }
-);
-
-// Helper to get matching repositories for a topic
-async function getReposForTopic(topic: string): Promise<TopicRepository[]> {
-    try {
-        const index = await getTopicRepoIndex();
-        return index[topic.toLowerCase()] || [];
-    } catch (e) {
-        console.error("Error reading repos for topic:", e);
-        return [];
-    }
-}
-
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { topic } = await params;
-    const decodedTopic = decodeURIComponent(topic).replace(/-/g, ' ');
-    const capitalizedTopic = decodedTopic.charAt(0).toUpperCase() + decodedTopic.slice(1);
+    const topicSlug = decodeURIComponent(topic);
+    const displayTopic = topicSlug.replace(/-/g, ' ');
+    const capitalizedTopic = displayTopic.charAt(0).toUpperCase() + displayTopic.slice(1);
+    const indexable = await isIndexableTopic(topicSlug);
 
     return {
         title: `Best Open Source ${capitalizedTopic} Repositories - RepoMind`,
-        description: `Discover and analyze the top open-source GitHub repositories for ${decodedTopic}. Deep architecture and code analysis powered by RepoMind.`,
+        description: `Discover and analyze the top open-source GitHub repositories for ${displayTopic}. Deep architecture and code analysis powered by RepoMind.`,
         openGraph: {
             title: `Top ${capitalizedTopic} Repositories`,
-            description: `Explore the best open-source projects using ${decodedTopic}.`
+            description: `Explore the best open-source projects using ${displayTopic}.`
         },
         alternates: {
             canonical: `/topics/${topic}`,
-        }
+        },
+        robots: indexable
+            ? { index: true, follow: true }
+            : {
+                index: false,
+                follow: true,
+                googleBot: {
+                    index: false,
+                    follow: true,
+                },
+            },
     };
 }
 

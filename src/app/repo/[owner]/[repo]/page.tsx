@@ -1,8 +1,10 @@
 import { Metadata } from 'next';
 import { headers } from 'next/headers';
-import { notFound } from 'next/navigation';
 import type { GitHubRepo, RepoCommit, RepoLanguage } from '@/lib/github';
-import { ArrowLeft, Star, GitFork, AlertCircle, Clock, FileCode, Search } from 'lucide-react';
+import { getErrorStatus, getRepo, getRepoFullContext } from '@/lib/github';
+import { cacheRepoUnavailable, getCachedRepoUnavailable } from '@/lib/cache';
+import { isCuratedRepo } from '@/lib/repo-catalog';
+import { ArrowLeft, Star, GitFork, AlertCircle, Clock, FileCode, Search, Lock, Home } from 'lucide-react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -18,67 +20,156 @@ interface Props {
 
 export const revalidate = 900;
 
+const REPO_SEGMENT_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
+
 function isLikelyCrawler(userAgent: string): boolean {
     return /bot|crawl|spider|slurp|preview|facebookexternalhit|linkedinbot|whatsapp|telegram|discord/i.test(userAgent);
 }
 
+function isValidRepoSegment(value: string): boolean {
+    if (!REPO_SEGMENT_PATTERN.test(value)) {
+        return false;
+    }
+
+    if (value.startsWith('.') || value.endsWith('.') || value.endsWith('.git')) {
+        return false;
+    }
+
+    return true;
+}
+
+function isValidOwnerRepo(owner: string, repo: string): boolean {
+    return isValidRepoSegment(owner) && isValidRepoSegment(repo);
+}
+
+function buildRepoSignInHref(owner: string, repo: string): string {
+    const callbackUrl = encodeURIComponent(`/repo/${owner}/${repo}`);
+    return `/api/auth/signin?callbackUrl=${callbackUrl}`;
+}
+
+function RepoUnavailableState({ owner, repo }: { owner: string; repo: string }) {
+    return (
+        <main className="min-h-screen bg-black text-white p-6 md:p-12 overflow-x-hidden relative">
+            <div className="fixed inset-0 z-0 pointer-events-none">
+                <div className="absolute top-[-20%] left-[-10%] w-[80vw] max-w-[500px] h-[80vw] max-h-[500px] bg-purple-600/10 rounded-full blur-[80px] md:blur-[128px]" />
+            </div>
+
+            <div className="max-w-3xl mx-auto relative z-10">
+                <Link href="/" className="inline-flex items-center text-zinc-400 hover:text-white mb-10 transition-colors">
+                    <ArrowLeft className="w-4 h-4 mr-2" /> back to home
+                </Link>
+
+                <section className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-8 md:p-10">
+                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold uppercase tracking-wide mb-5">
+                        Repository unavailable
+                    </div>
+                    <h1 className="text-3xl md:text-4xl font-bold mb-4">We couldn&apos;t access this repository</h1>
+                    <p className="text-zinc-300 leading-relaxed mb-6">
+                        Repo path: <span className="font-semibold text-white">{owner}/{repo}</span>
+                    </p>
+                    <p className="text-zinc-400 leading-relaxed mb-8">
+                        The repository may not exist, may be private, or the owner/repository name may be typed incorrectly.
+                        Double-check the owner and repository name. To view private repositories, sign in with GitHub first.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row gap-3">
+                        <Link
+                            href={buildRepoSignInHref(owner, repo)}
+                            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white text-black hover:bg-zinc-200 transition-colors font-medium"
+                        >
+                            <Lock className="w-4 h-4" />
+                            Sign in with GitHub
+                        </Link>
+                        <Link
+                            href="/"
+                            className="inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl border border-zinc-700 bg-zinc-800/40 hover:bg-zinc-800 transition-colors font-medium text-white"
+                        >
+                            <Home className="w-4 h-4" />
+                            Go to homepage
+                        </Link>
+                    </div>
+                </section>
+            </div>
+        </main>
+    );
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
     const { owner, repo } = await params;
+    const valid = isValidOwnerRepo(owner, repo);
+    const curated = valid ? await isCuratedRepo(owner, repo) : false;
+    const knownUnavailable = valid ? await getCachedRepoUnavailable(owner, repo) : false;
+    const shouldIndex = curated && !knownUnavailable;
 
-    try {
-        const data = await import('@/lib/github').then((m) => m.getRepo(owner, repo));
-        return {
-            title: `${data.name} by ${data.owner.login} - RepoMind Architecture & Analysis`,
-            description: data.description
-                ? `Analyze the architecture, code quality, and security of ${data.full_name}. ${data.description}`
-                : `Deep AI analysis and visualization of ${data.full_name} using RepoMind Agentic CAG Engine.`,
-            openGraph: {
-                title: `${data.full_name} - RepoMind Analysis`,
-                description: data.description || `AI analysis for ${data.full_name}`,
+    return {
+        title: `${owner}/${repo} - RepoMind`,
+        description: `Analyze ${owner}/${repo} architecture, code quality, and security with RepoMind Agentic CAG.`,
+        openGraph: {
+            title: `${owner}/${repo} - RepoMind Analysis`,
+            description: `Deep AI analysis for ${owner}/${repo}.`,
+        },
+        twitter: {
+            card: 'summary_large_image',
+            title: `${owner}/${repo} Architecture Analysis`,
+            description: `Deep AI analysis for ${owner}/${repo}.`,
+        },
+        alternates: {
+            canonical: `/repo/${owner}/${repo}`,
+        },
+        robots: shouldIndex
+            ? { index: true, follow: true }
+            : {
+                index: false,
+                follow: true,
+                googleBot: {
+                    index: false,
+                    follow: true,
+                },
             },
-            twitter: {
-                card: 'summary_large_image',
-                title: `${data.full_name} Architecture Analysis`,
-                description: data.description || '',
-            },
-            alternates: {
-                canonical: `/repo/${owner}/${repo}`,
-            }
-        };
-    } catch {
-        return {
-            title: `${owner}/${repo} - RepoMind`,
-        };
-    }
+    };
 }
 
 export default async function RepoPage({ params }: Props) {
     const { owner, repo } = await params;
+
+    if (!isValidOwnerRepo(owner, repo)) {
+        return <RepoUnavailableState owner={owner} repo={repo} />;
+    }
+
+    if (await getCachedRepoUnavailable(owner, repo)) {
+        return <RepoUnavailableState owner={owner} repo={repo} />;
+    }
+
+    let repoData: GitHubRepo;
+    try {
+        repoData = await getRepo(owner, repo);
+    } catch (error) {
+        if (getErrorStatus(error) === 404) {
+            await cacheRepoUnavailable(owner, repo);
+        }
+        console.error('Failed repository existence check:', error);
+        return <RepoUnavailableState owner={owner} repo={repo} />;
+    }
+
     const userAgent = (await headers()).get('user-agent') || '';
     const shouldRenderReadmePreview = !isLikelyCrawler(userAgent);
 
-    let repoData: GitHubRepo | null = null;
     let detailsData: { languages: RepoLanguage[]; commits: RepoCommit[] } = { languages: [], commits: [] };
     let readmeContent: string | null = null;
 
     try {
-        // MEGA-OPTIMIZATION: Fetch all repository data in a single consolidated call
-        // This uses the "Mega-Key" strategy to reduce KV commands and utilize bandwidth
-        const context = await import('@/lib/github').then(m => m.getRepoFullContext(owner, repo));
+        const context = await getRepoFullContext(owner, repo);
         repoData = context.metadata;
         detailsData = { languages: context.languages, commits: context.commits };
         readmeContent = context.readme;
     } catch (error) {
-        console.error("Failed to load repo data:", error);
-        notFound();
+        if (getErrorStatus(error) === 404) {
+            await cacheRepoUnavailable(owner, repo);
+        }
+        console.error('Failed to load full repo context:', error);
+        return <RepoUnavailableState owner={owner} repo={repo} />;
     }
 
-    // Fallback metadata if partial failure
-    if (!repoData) notFound();
-
-    // Use the full README safely. We will truncate it visually using CSS
-    // to avoid breaking the Markdown AST (which causes broken tags like **text...).
-    // We also use a regex trick to push any badges directly inline with the H1 onto the next line.
     const fullReadme = normalizeReadmeForPreview(readmeContent);
 
     return (
@@ -210,7 +301,6 @@ export default async function RepoPage({ params }: Props) {
                                 </ReactMarkdown>
                             </div>
 
-                            {/* Visual Fade Out */}
                             <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-[rgb(12,12,14)] via-[rgb(12,12,14,0.8)] to-transparent pointer-events-none" />
                         </div>
                     </section>

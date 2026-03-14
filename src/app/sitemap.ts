@@ -1,27 +1,9 @@
 import { MetadataRoute } from "next";
-import fs from "fs";
-import path from "path";
 import { getCanonicalSiteUrl } from "@/lib/site-url";
 import { getPublishedPosts } from "@/lib/services/blog-service";
+import { getCuratedRepos, getIndexableTopics } from "@/lib/repo-catalog";
 
 export const dynamic = 'force-static';
-
-interface TopRepoEntry {
-    owner: string;
-    repo: string;
-    topics?: string[];
-}
-
-function isTopRepoEntry(value: unknown): value is TopRepoEntry {
-    return Boolean(
-        value &&
-        typeof value === "object" &&
-        "owner" in value &&
-        "repo" in value &&
-        typeof (value as { owner?: unknown }).owner === "string" &&
-        typeof (value as { repo?: unknown }).repo === "string"
-    );
-}
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     const baseUrl = getCanonicalSiteUrl();
@@ -58,38 +40,26 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     let topicRoutes: MetadataRoute.Sitemap = [];
 
     try {
-            const dataPath = path.join(process.cwd(), 'public', 'data', 'top-repos.json');
-            if (fs.existsSync(dataPath)) {
-                const fileContent = fs.readFileSync(dataPath, 'utf8');
-                const parsed: unknown = JSON.parse(fileContent);
-                const repos = Array.isArray(parsed) ? parsed.filter(isTopRepoEntry) : [];
+        const [curatedRepos, indexableTopics] = await Promise.all([
+            getCuratedRepos(),
+            getIndexableTopics(),
+        ]);
 
-                repoRoutes = repos.map((repo) => ({
-                    url: `${baseUrl}/repo/${repo.owner}/${repo.repo}`,
-                    lastModified: new Date(),
-                    changeFrequency: "weekly",
-                    priority: 0.8,
-                }));
+        repoRoutes = curatedRepos.map((repo) => ({
+            url: `${baseUrl}/repo/${repo.owner}/${repo.repo}`,
+            lastModified: new Date(),
+            changeFrequency: "weekly",
+            priority: 0.8,
+        }));
 
-                const uniqueTopics = new Set<string>();
-                for (const repo of repos) {
-                    if (!Array.isArray(repo.topics)) continue;
-                    for (const topic of repo.topics) {
-                        if (typeof topic === "string" && topic.trim()) {
-                            uniqueTopics.add(topic.toLowerCase());
-                        }
-                    }
-                }
-
-                topicRoutes = Array.from(uniqueTopics).map((topic) => ({
-                    url: `${baseUrl}/topics/${encodeURIComponent(topic)}`,
-                    lastModified: new Date(),
-                    changeFrequency: "weekly",
-                    priority: 0.7,
-                }));
-            }
+        topicRoutes = indexableTopics.map((topic) => ({
+            url: `${baseUrl}/topics/${encodeURIComponent(topic)}`,
+            lastModified: new Date(),
+            changeFrequency: "weekly",
+            priority: 0.7,
+        }));
     } catch (e) {
-        console.error("Failed to generate sitemap routes from top-repos.json", e);
+        console.error("Failed to generate sitemap routes from repo catalog", e);
     }
 
     return [...defaultRoutes, ...repoRoutes, ...topicRoutes];

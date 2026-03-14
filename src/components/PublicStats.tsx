@@ -21,7 +21,7 @@ export default function PublicStats() {
         void load();
         const intervalId = setInterval(() => {
             void load();
-        }, 60_000);
+        }, 300_000);
 
         return () => {
             mounted = false;

@@ -12,6 +12,7 @@ const TTL_FILE = 3600; // 1 hour
 const TTL_REPO = 900; // 15 minutes
 const TTL_PROFILE = 1800; // 30 minutes
 const TTL_SCAN = 604800; // 7 days
+const TTL_REPO_UNAVAILABLE = 1800; // 30 minutes
 
 interface RepoFullContextCachePayload {
     metadata: unknown;
@@ -144,6 +145,28 @@ export async function getCachedRepoMetadata(
 ): Promise<unknown | null> {
     const key = `repo:${owner}/${repo}`;
     return await safeKvOperation(() => kv.get<unknown>(key));
+}
+
+/**
+ * Cache unavailable repository lookups (404/private with token constraints)
+ * to avoid repeated API calls for obvious misses.
+ */
+export async function cacheRepoUnavailable(
+    owner: string,
+    repo: string,
+    ttl: number = TTL_REPO_UNAVAILABLE
+): Promise<void> {
+    const key = `repo:unavailable:${owner.toLowerCase()}/${repo.toLowerCase()}`;
+    await safeKvOperation(() => kv.setex(key, ttl, "1"));
+}
+
+export async function getCachedRepoUnavailable(
+    owner: string,
+    repo: string
+): Promise<boolean> {
+    const key = `repo:unavailable:${owner.toLowerCase()}/${repo.toLowerCase()}`;
+    const cached = await safeKvOperation(() => kv.get<string>(key));
+    return cached === "1";
 }
 
 /**

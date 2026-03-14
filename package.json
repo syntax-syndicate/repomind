@@ -18,6 +18,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "node scripts/prisma-deploy.mjs",
+    "data:refresh:repos": "node scripts/fetch-trending-repos.mjs",
     "backfill:kv": "node scripts/backfill-kv-to-postgres.mjs",
     "analytics:estimate-gap": "node scripts/estimate-analytics-gap.mjs"
   },

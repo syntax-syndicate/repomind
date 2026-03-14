@@ -4,6 +4,8 @@ import { kv } from "@vercel/kv";
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const CACHE_CONTROL = "public, s-maxage=300, stale-while-revalidate=3600";
+
 export async function GET() {
     try {
         const totalQueries = await kv.get<number>("queries:total");
@@ -115,6 +117,9 @@ export async function GET() {
             {
                 width: 400,
                 height: 200,
+                headers: {
+                    "Cache-Control": CACHE_CONTROL,
+                },
             }
         );
     } catch (error) {

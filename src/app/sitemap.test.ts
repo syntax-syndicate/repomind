@@ -1,18 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { getPublishedPostsMock, getCanonicalSiteUrlMock, existsSyncMock } = vi.hoisted(() => ({
+const { getPublishedPostsMock, getCanonicalSiteUrlMock, getCuratedReposMock, getIndexableTopicsMock } = vi.hoisted(() => ({
   getPublishedPostsMock: vi.fn(),
   getCanonicalSiteUrlMock: vi.fn(),
-  existsSyncMock: vi.fn(),
-}));
-
-vi.mock("fs", () => ({
-  default: {
-    existsSync: existsSyncMock,
-    readFileSync: vi.fn(),
-  },
-  existsSync: existsSyncMock,
-  readFileSync: vi.fn(),
+  getCuratedReposMock: vi.fn(),
+  getIndexableTopicsMock: vi.fn(),
 }));
 
 vi.mock("@/lib/services/blog-service", () => ({
@@ -23,16 +15,23 @@ vi.mock("@/lib/site-url", () => ({
   getCanonicalSiteUrl: getCanonicalSiteUrlMock,
 }));
 
+vi.mock("@/lib/repo-catalog", () => ({
+  getCuratedRepos: getCuratedReposMock,
+  getIndexableTopics: getIndexableTopicsMock,
+}));
+
 import sitemap from "@/app/sitemap";
 
 describe("sitemap blog metadata", () => {
   beforeEach(() => {
     getPublishedPostsMock.mockReset();
     getCanonicalSiteUrlMock.mockReset();
-    existsSyncMock.mockReset();
+    getCuratedReposMock.mockReset();
+    getIndexableTopicsMock.mockReset();
 
     getCanonicalSiteUrlMock.mockReturnValue("https://repomind.in");
-    existsSyncMock.mockReturnValue(false);
+    getCuratedReposMock.mockResolvedValue([]);
+    getIndexableTopicsMock.mockResolvedValue([]);
   });
 
   it("uses each blog post updatedAt as sitemap lastModified", async () => {
@@ -48,5 +47,21 @@ describe("sitemap blog metadata", () => {
     const blogRoute = routes.find((entry) => entry.url === "https://repomind.in/blog/my-post");
 
     expect(blogRoute?.lastModified).toEqual(updatedAt);
+  });
+
+  it("indexes only curated repos and indexable topics", async () => {
+    getPublishedPostsMock.mockResolvedValue([]);
+    getCuratedReposMock.mockResolvedValue([
+      { owner: "facebook", repo: "react" },
+      { owner: "vercel", repo: "next.js" },
+    ]);
+    getIndexableTopicsMock.mockResolvedValue(["typescript", "react"]);
+
+    const routes = await sitemap();
+
+    expect(routes.some((entry) => entry.url === "https://repomind.in/repo/facebook/react")).toBe(true);
+    expect(routes.some((entry) => entry.url === "https://repomind.in/repo/vercel/next.js")).toBe(true);
+    expect(routes.some((entry) => entry.url === "https://repomind.in/topics/typescript")).toBe(true);
+    expect(routes.some((entry) => entry.url === "https://repomind.in/topics/react")).toBe(true);
   });
 });
