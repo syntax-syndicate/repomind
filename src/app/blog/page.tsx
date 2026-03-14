@@ -21,7 +21,7 @@ export default async function BlogIndex() {
       {/* Header / Nav Placeholder */}
       <div className="border-b border-white/5 bg-[#09090b]/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/" className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent italic">
+          <Link href="/" className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">
             RepoMind
           </Link>
           <div className="flex gap-6 items-center">
@@ -43,110 +43,105 @@ export default async function BlogIndex() {
           </p>
         </div>
 
-        {/* Featured Post */}
-        {featuredPost && (
-          <div className="mb-16">
-            <Link href={`/blog/${featuredPost.slug}`}>
-              <div className="conic-border-container rounded-3xl overflow-hidden group">
-                <div className="bg-zinc-900/40 backdrop-blur-xl p-1 md:p-2">
-                  <div className="grid md:grid-cols-2 gap-8 items-center p-6 md:p-8">
-                    <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/5">
+        {posts.length === 0 ? (
+          <div className="py-24 text-center border border-white/5 rounded-3xl bg-zinc-900/20 backdrop-blur-sm">
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-purple-500/10 mb-6 border border-purple-500/20">
+              <Calendar className="text-purple-400" size={32} />
+            </div>
+            <h2 className="text-3xl font-bold mb-4">Insights Coming Soon</h2>
+            <p className="text-zinc-400 max-w-md mx-auto italic">
+              We're currently deep in the lab building the future of code intelligence. Check back soon for our first deep dives and engineering updates.
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Featured Post */}
+            {featuredPost && (
+              <div className="mb-16">
+                <Link href={`/blog/${featuredPost.slug}`}>
+                  <div className="conic-border-container rounded-3xl overflow-hidden group">
+                    <div className="bg-zinc-900/40 backdrop-blur-xl p-1 md:p-2">
+                      <div className="grid md:grid-cols-2 gap-8 items-center p-6 md:p-8">
+                        <div className="relative aspect-video rounded-2xl overflow-hidden border border-white/5">
+                          <Image 
+                            src={featuredPost.image} 
+                            alt={featuredPost.title}
+                            fill
+                            className="object-cover group-hover:scale-105 transition-transform duration-500"
+                          />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-3 mb-4">
+                            <span className="px-3 py-1 rounded-full bg-purple-500/10 text-purple-400 text-xs font-bold border border-purple-500/20">
+                              {featuredPost.category}
+                            </span>
+                            <span className="text-zinc-500 text-xs flex items-center gap-1">
+                              <Calendar size={12} /> {featuredPost.date}
+                            </span>
+                          </div>
+                          <h2 className="text-3xl font-bold mb-4 group-hover:text-purple-400 transition-colors">
+                            {featuredPost.title}
+                          </h2>
+                          <p className="text-zinc-400 mb-6 line-clamp-3 italic">
+                            "{featuredPost.excerpt}"
+                          </p>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-[10px] font-bold">
+                                RM
+                              </div>
+                              <span className="text-sm text-zinc-300 font-medium">{featuredPost.author}</span>
+                            </div>
+                            <span className="flex items-center gap-1 text-purple-400 text-sm font-bold group-hover:gap-2 transition-all">
+                              Read Full Insight <ArrowRight size={16} />
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              </div>
+            )}
+
+            {/* Grid Section */}
+            <div className="grid md:grid-cols-2 gap-8">
+              {regularPosts.map((post) => (
+                <Link key={post.slug} href={`/blog/${post.slug}`}>
+                  <div className="bg-zinc-900/40 border border-white/5 rounded-3xl p-6 hover:bg-zinc-900/60 hover:border-white/10 transition-all group h-full flex flex-col">
+                    <div className="relative aspect-video rounded-xl overflow-hidden mb-6 border border-white/5">
                       <Image 
-                        src={featuredPost.image} 
-                        alt={featuredPost.title}
+                        src={post.image} 
+                        alt={post.title}
                         fill
                         className="object-cover group-hover:scale-105 transition-transform duration-500"
                       />
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-3 mb-4">
-                        <span className="px-3 py-1 rounded-full bg-purple-500/10 text-purple-400 text-xs font-bold border border-purple-500/20">
-                          {featuredPost.category}
-                        </span>
-                        <span className="text-zinc-500 text-xs flex items-center gap-1">
-                          <Calendar size={12} /> {featuredPost.date}
-                        </span>
-                      </div>
-                      <h2 className="text-3xl font-bold mb-4 group-hover:text-purple-400 transition-colors">
-                        {featuredPost.title}
-                      </h2>
-                      <p className="text-zinc-400 mb-6 line-clamp-3 italic">
-                        "{featuredPost.excerpt}"
-                      </p>
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-[10px] font-bold">
-                            RM
-                          </div>
-                          <span className="text-sm text-zinc-300 font-medium">{featuredPost.author}</span>
-                        </div>
-                        <span className="flex items-center gap-1 text-purple-400 text-sm font-bold group-hover:gap-2 transition-all">
-                          Read Full Insight <ArrowRight size={16} />
+                      <div className="absolute top-3 left-3">
+                        <span className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-[10px] font-bold border border-white/10 uppercase tracking-widest">
+                          {post.category}
                         </span>
                       </div>
                     </div>
+                    <h3 className="text-xl font-bold mb-3 group-hover:text-purple-400 transition-colors line-clamp-2">
+                      {post.title}
+                    </h3>
+                    <p className="text-zinc-400 text-sm mb-6 line-clamp-2 italic opacity-80">
+                      {post.excerpt}
+                    </p>
+                    <div className="mt-auto pt-4 border-t border-white/5 flex items-center justify-between">
+                      <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-tighter">
+                        {post.date}
+                      </span>
+                      <span className="flex items-center gap-1 text-zinc-300 text-xs font-bold">
+                        View <ArrowRight size={14} />
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </div>
-            </Link>
-          </div>
-        )}
-
-        {/* Grid Section */}
-        <div className="grid md:grid-cols-2 gap-8">
-          {regularPosts.map((post) => (
-            <Link key={post.slug} href={`/blog/${post.slug}`}>
-              <div className="bg-zinc-900/40 border border-white/5 rounded-3xl p-6 hover:bg-zinc-900/60 hover:border-white/10 transition-all group h-full flex flex-col">
-                <div className="relative aspect-video rounded-xl overflow-hidden mb-6 border border-white/5">
-                  <Image 
-                    src={post.image} 
-                    alt={post.title}
-                    fill
-                    className="object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute top-3 left-3">
-                    <span className="px-3 py-1 rounded-full bg-black/60 backdrop-blur-md text-white text-[10px] font-bold border border-white/10 uppercase tracking-widest">
-                      {post.category}
-                    </span>
-                  </div>
-                </div>
-                <h3 className="text-xl font-bold mb-3 group-hover:text-purple-400 transition-colors line-clamp-2">
-                  {post.title}
-                </h3>
-                <p className="text-zinc-400 text-sm mb-6 line-clamp-2 italic italic opacity-80">
-                  {post.excerpt}
-                </p>
-                <div className="mt-auto pt-4 border-t border-white/5 flex items-center justify-between">
-                  <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-tighter">
-                    {post.date}
-                  </span>
-                  <span className="flex items-center gap-1 text-zinc-300 text-xs font-bold">
-                    View <ArrowRight size={14} />
-                  </span>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-
-        {/* Newsletter / CTA */}
-        <div className="mt-24 p-12 rounded-3xl bg-gradient-to-br from-zinc-900 to-[#09090b] border border-white/5 relative overflow-hidden text-center">
-            <div className="absolute inset-0 bg-purple-500/5 blur-3xl rounded-full translate-y-1/2"></div>
-            <h2 className="text-3xl font-bold mb-4 relative z-10">Stay ahead of the curve</h2>
-            <p className="text-zinc-400 mb-8 max-w-lg mx-auto relative z-10 font-medium">
-              Join 2,000+ engineers receiving our monthly breakdown of AI breakthroughs in code intelligence.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-4 max-w-md mx-auto relative z-10">
-                <input 
-                    type="email" 
-                    placeholder="Enter your email" 
-                    className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm outline-none focus:border-purple-500/50 transition-colors"
-                />
-                <button className="bg-white text-black font-bold px-6 py-3 rounded-xl hover:bg-zinc-200 transition-colors text-sm">
-                    Subscribe
-                </button>
+                </Link>
+              ))}
             </div>
-        </div>
+          </>
+        )}
       </main>
 
       <Footer />

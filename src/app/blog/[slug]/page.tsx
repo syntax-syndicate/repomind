@@ -5,10 +5,11 @@ import Image from "next/image";
 import { ArrowLeft, Clock, Share2 } from "lucide-react";
 import Footer from "@/components/Footer";
 import { EnhancedMarkdown } from "@/components/EnhancedMarkdown";
+import { BlogPost } from "@prisma/client";
 
 // Generates static params for all blog posts
 export async function generateStaticParams() {
-  const posts = await getPublishedPosts();
+  const posts: BlogPost[] = await getPublishedPosts();
   return posts.map((post) => ({
     slug: post.slug,
   }));
@@ -27,7 +28,7 @@ export default async function BlogPostPage({ params }: { params: Promise<{ slug:
        {/* Header / Nav */}
        <div className="border-b border-white/5 bg-[#09090b]/80 backdrop-blur-md sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <Link href="/" className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent italic">
+          <Link href="/" className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">
             RepoMind
           </Link>
           <div className="flex gap-6 items-center">
