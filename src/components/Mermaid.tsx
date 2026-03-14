@@ -32,7 +32,13 @@ export const Mermaid = ({ chart, isStreaming = false }: MermaidProps) => {
     const [isFixing, setIsFixing] = useState(false);
     const diagramRef = useRef<HTMLDivElement>(null);
     const modalRef = useRef<HTMLDivElement>(null);
+    // Use a ref so the effect can read the latest streaming state without being a dependency
+    const isInternalStreamingRef = useRef(isInternalStreaming);
+    isInternalStreamingRef.current = isInternalStreaming;
     const isGenerating = isFixing || isInternalStreaming || (isStreaming && !svg);
+    // Only show the overlay when there is no SVG yet — if we have a prior render,
+    // keep it visible while the new diagram renders in the background (no flash).
+    const showOverlay = !svg && isGenerating;
 
     useEffect(() => {
         if (isStreaming) {
@@ -55,6 +61,8 @@ export const Mermaid = ({ chart, isStreaming = false }: MermaidProps) => {
     useEffect(() => {
         if (!chart) return;
 
+        // Each render attempt has its own "generation" counter so that a stale
+        // async result from a previous chart/id does not overwrite a newer one.
         let mounted = true;
 
         const renderDiagram = async (retryCount = 0) => {
@@ -86,17 +94,17 @@ export const Mermaid = ({ chart, isStreaming = false }: MermaidProps) => {
 
                 // Try rendering with sanitized code
                 try {
-                    const { svg } = await mermaid.render(id, sanitized);
+                    const { svg: newSvg } = await mermaid.render(id, sanitized);
                     if (mounted) {
-                        setSvg(svg);
+                        setSvg(newSvg);
                         setError(null);
                         setIsFixing(false);
                         setIsInternalStreaming(false);
                     }
                     return; // Success!
                 } catch (renderError: unknown) {
-                    // If we are streaming, don't show error yet
-                    if (isStreaming || isInternalStreaming) {
+                    // If we are streaming, don't show error yet — diagram is still being built
+                    if (isStreaming || isInternalStreamingRef.current) {
                         return;
                     }
 
@@ -118,9 +126,9 @@ export const Mermaid = ({ chart, isStreaming = false }: MermaidProps) => {
                                 const { fixed } = await response.json();
                                 if (fixed) {
                                     console.log('✅ AI Fix received, retrying render...');
-                                    const { svg } = await mermaid.render(id + '-autofixed', fixed);
+                                    const { svg: fixedSvg } = await mermaid.render(id + '-autofixed', fixed);
                                     if (mounted) {
-                                        setSvg(svg);
+                                        setSvg(fixedSvg);
                                         setError(null);
                                         setIsFixing(false);
                                         setIsInternalStreaming(false);
@@ -145,7 +153,7 @@ export const Mermaid = ({ chart, isStreaming = false }: MermaidProps) => {
                     }
                 }
             } catch (error: unknown) {
-                if (!isStreaming && !isInternalStreaming) {
+                if (!isStreaming && !isInternalStreamingRef.current) {
                     console.error('Complete render failure:', error);
                     if (mounted) {
                         setIsFixing(false);
@@ -162,7 +170,11 @@ export const Mermaid = ({ chart, isStreaming = false }: MermaidProps) => {
             mounted = false;
             clearTimeout(timer);
         };
-    }, [chart, id, isStreaming, isInternalStreaming]);
+        // NOTE: isInternalStreaming is intentionally excluded from deps — we read it
+        // via isInternalStreamingRef so the effect doesn't re-trigger when it flips
+        // to false after a successful render (which was the source of the flicker).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [chart, id, isStreaming]);
 
     const handleRetry = async () => {
         if (!chart) return;
@@ -257,7 +269,7 @@ export const Mermaid = ({ chart, isStreaming = false }: MermaidProps) => {
                     </div>
                 )}
 
-                {isGenerating && (
+                {showOverlay && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center bg-zinc-900/50 backdrop-blur-sm rounded-lg z-10">
                         <div className="flex items-center gap-2 text-zinc-400">
                             <Sparkles className="w-5 h-5 animate-pulse text-purple-400" />

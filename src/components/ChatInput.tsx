@@ -135,7 +135,7 @@ export function ChatInput({
                                     initial={{ opacity: 0, scale: 0.95, y: 5 }}
                                     animate={{ opacity: 1, scale: 1, y: 0 }}
                                     exit={{ opacity: 0, scale: 0.95, y: 5 }}
-                                    className="absolute bottom-full right-0 mb-4 w-52 bg-zinc-900/90 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 p-1.5"
+                                    className="absolute bottom-full right-0 mb-4 w-52 bg-zinc-900/90 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 p-1.5 flex flex-col gap-1"
                                 >
                                     <button
                                         type="button"

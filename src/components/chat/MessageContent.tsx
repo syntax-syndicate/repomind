@@ -50,7 +50,6 @@ export function MessageContent({
             if (isMermaid) {
                 return (
                     <Mermaid
-                        key={messageId}
                         chart={String(children).replace(/\n$/, "")}
                         isStreaming={isStreamingMessage}
                     />
@@ -61,7 +60,7 @@ export function MessageContent({
                 try {
                     const jsonContent = String(children).replace(/\n$/, "");
                     const chart = generateMermaidFromJSON(JSON.parse(jsonContent));
-                    return <Mermaid key={messageId} chart={chart} isStreaming={isStreamingMessage} />;
+                    return <Mermaid chart={chart} isStreaming={isStreamingMessage} />;
                 } catch {
                     return (
                         <div className="flex items-center gap-2 p-4 bg-zinc-900/50 rounded-lg border border-white/10">
