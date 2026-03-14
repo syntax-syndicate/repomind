@@ -2,6 +2,7 @@ import { useMemo, type HTMLAttributes, type ReactNode } from "react";
 
 import { EnhancedMarkdown } from "@/components/EnhancedMarkdown";
 import { Mermaid } from "@/components/Mermaid";
+import { DynamicSVG } from "@/components/DynamicSVG";
 import { CodeBlock } from "@/components/CodeBlock";
 import { generateMermaidFromJSON } from "@/lib/diagram-utils";
 import { repairMarkdown } from "@/lib/markdown-utils";
@@ -39,7 +40,7 @@ export function MessageContent({
     isStreaming = false,
 }: MessageContentProps) {
     const repairedContent = useMemo(() => repairMarkdown(content), [content]);
-    const isStreamingMessage = isStreaming || messages[messages.length - 1]?.id === messageId;
+    const isStreamingMessage = isStreaming;
 
     const components = useMemo(() => ({
         code: ({ className, children, inline, ...props }: MarkdownCodeProps) => {
@@ -51,6 +52,15 @@ export function MessageContent({
                 return (
                     <Mermaid
                         chart={String(children).replace(/\n$/, "")}
+                        isStreaming={isStreamingMessage}
+                    />
+                );
+            }
+
+            if (match?.[1] === "svg") {
+                return (
+                    <DynamicSVG
+                        svg={String(children).replace(/\n$/, "")}
                         isStreaming={isStreamingMessage}
                     />
                 );

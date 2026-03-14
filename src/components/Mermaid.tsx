@@ -210,6 +210,57 @@ export const Mermaid = ({ chart, isStreaming = false }: MermaidProps) => {
         }
     };
 
+    // Add drawing animation to the SVG paths
+    useEffect(() => {
+        if (!svg || isGenerating || !diagramRef.current) return;
+
+        const container = diagramRef.current;
+        const svgElement = container.querySelector("svg");
+        if (!svgElement) return;
+
+        // Force overflow visible for animations
+        svgElement.style.overflow = "visible";
+
+        // Animate paths (drawing effect)
+        const paths = svgElement.querySelectorAll("path.edgePath path, path.flowchart-link, .sequence-diagram path");
+        paths.forEach((path: any, i) => {
+            try {
+                const length = path.getTotalLength();
+                if (length < 5) return; // Skip tiny paths
+
+                path.style.strokeDasharray = `${length}`;
+                path.style.strokeDashoffset = `${length}`;
+                path.animate([
+                    { strokeDashoffset: length },
+                    { strokeDashoffset: 0 }
+                ], {
+                    duration: 800 + (length / 2),
+                    delay: i * 50,
+                    fill: "forwards",
+                    easing: "ease-out"
+                });
+            } catch (e) {
+                // Ignore errors for paths that don't support getTotalLength
+            }
+        });
+
+        // Animate nodes
+        const nodes = svgElement.querySelectorAll(".node, .actor, .state, .class-name");
+        nodes.forEach((node: any, i) => {
+            node.style.opacity = "0";
+            node.style.transformOrigin = "center";
+            node.animate([
+                { opacity: 0, transform: "scale(0.9)" },
+                { opacity: 1, transform: "scale(1)" }
+            ], {
+                duration: 500,
+                delay: i * 30 + 200,
+                fill: "forwards",
+                easing: "cubic-bezier(0.34, 1.56, 0.64, 1)"
+            });
+        });
+    }, [svg, isGenerating]);
+
     const exportToPNG = async (e?: React.MouseEvent) => {
         e?.stopPropagation(); // Prevent modal opening if clicking export button
         // Use the ref that is currently visible (modal or inline)

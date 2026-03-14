@@ -10,6 +10,7 @@ import { RepoCard } from "./RepoCard";
 import { DeveloperCard } from "./DeveloperCard";
 import { SmartLink } from "./SmartLink";
 import { Mermaid } from "./Mermaid";
+import { DynamicSVG } from "./DynamicSVG";
 
 interface ParsedContent {
     type: "markdown" | "repo-card" | "developer-card";
@@ -94,6 +95,15 @@ export function EnhancedMarkdown({ content, components, currentOwner, currentRep
                 return (
                     <Mermaid 
                         chart={String(children).replace(/\n$/, "")} 
+                        isStreaming={false} 
+                    />
+                );
+            }
+
+            if (match && match[1] === "svg") {
+                return (
+                    <DynamicSVG 
+                        svg={String(children).replace(/\n$/, "")} 
                         isStreaming={false} 
                     />
                 );

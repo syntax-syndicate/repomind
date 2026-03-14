@@ -155,26 +155,33 @@ export function buildRepoMindPrompt(params: RepoMindPromptParams): string {
            - *Example*: "Here is the improved README:\\n\\n\`\`\`markdown\\n# Title\\n...\\n\`\`\`"
            - **DO NOT** just describe what to do. **DO IT**.
          
-         - **FLOWCHARTS (STRICT)**: If the user asks for "flow", "architecture", "diagram", or "visualize", you MUST use the **JSON Format** inside a \`mermaid-json\` code block.
-           - **DO NOT** write standard Mermaid syntax directly. It is error-prone.
-           - **SYNTAX**: 
-             \`\`\`mermaid-json
-             {
-               "direction": "TD", 
-               "nodes": [
-                 { "id": "A", "label": "Start", "shape": "rounded" },
-                 { "id": "B", "label": "Process" }
-               ],
-               "edges": [
-                 { "from": "A", "to": "B", "label": "next" }
-               ]
-             }
-             \`\`\`
-           - **Shapes**: rect, rounded, circle, diamond, database, hexagon.
-           - **Edge Types**: arrow, dotted, thick, line.
-           - **IDs**: Use simple alphanumeric IDs (A, B, node1).
+         - **FLOWCHARTS & DIAGRAMS (STRICT)**: 
+           - Use standard **Mermaid** syntax inside a ${"```mermaid"} block.
+           - All Mermaid diagrams now feature **automatic entrance animations** (path drawing & node scaling).
+           - **RULES**:
+             - Use for: Logic flows, sequence diagrams, ER/Class models.
+             - Node Labels: MUST be in double quotes: \`A["Label Text"]\`.
+             - Edge Labels: Do NOT quote: \`A -- label --> B\`.
+             - Avoid special characters in labels.
 
-        - **COMBINATIONS**: You can and SHOULD combine elements.
+         - **IMAGES & VISUAL EXPLANATIONS (STRICT)**:
+           - Use **SVG** inside a ${"```svg"} block for high-fidelity or animated visuals.
+           - All SVG blocks now feature **premium drawing animations** and **full-screen preview**.
+           - **ELITE SVG DESIGN SYSTEM**:
+             - **Colors**: Zinc-900 Background (#18181b), Indigo-500 Accents (#6366f1), Emerald-500 Success (#10b981), Rose-500 Error (#f43f5e).
+             - **Typography**: Text should be clear, concise, and Zinc-300 (#d4d4d8).
+             - **Responsiveness**: Always use \`viewBox="0 0 800 400"\` (or similar aspect ratio).
+           - **ANIMATION METAPHORS (Use SMIL for internal motion)**:
+             - **Data Flow**: A small circle moving along a path using \`<animateMotion>\`.
+             - **Processing**: A circle or rect with a pulsing stroke using \`<animate attributeName="stroke-width" values="1;3;1" dur="2s" repeatCount="indefinite" />\`.
+             - **Success/Completion**: An Emerald checkmark that draws itself.
+           - **VISUAL DECISION LOGIC**:
+             1. If user asks for an **"Image"** (e.g., "draw", "picture") -> Output high-fidelity **SVG (Static)**. **DO NOT** add animations unless specifically requested.
+             2. If user asks for a **"Flowchart/Diagram"** -> Use **Mermaid**.
+             3. If user asks to **"Animate"**, **"Explain the flow"**, or describes **dynamics** (e.g., "how it moves") -> Output an **Animated SVG**. 
+             *Note: If both "image" and "explain" are used together without flow keywords, default to STATIC SVG.*
+
+         - **COMBINATIONS**: You can and SHOULD combine elements.
            - *Example*: "Here is the architecture (Mermaid) and the updated config (Code Block)."
            - *Example*: "Here is the project info (Repo Card) and the installation script (Code Block)."
 
