@@ -1,4 +1,4 @@
-import { getPublishedPosts, getPostBySlug } from "@/lib/services/blog-service";
+import { getPublishedPostBySlug, getPublishedPosts } from "@/lib/services/blog-service";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -6,6 +6,7 @@ import { ArrowLeft, Clock, Share2 } from "lucide-react";
 import Footer from "@/components/Footer";
 import { EnhancedMarkdown } from "@/components/EnhancedMarkdown";
 import { BlogPost } from "@prisma/client";
+import { Metadata } from "next";
 
 // Generates static params for all blog posts
 export async function generateStaticParams() {
@@ -15,9 +16,56 @@ export async function generateStaticParams() {
   }));
 }
 
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }): Promise<Metadata> {
+  const { slug } = await params;
+  const post = await getPublishedPostBySlug(slug);
+
+  if (!post) {
+    return {
+      title: "Post Not Found",
+      robots: {
+        index: false,
+        follow: false,
+      },
+    };
+  }
+
+  const canonicalPath = `/blog/${post.slug}`;
+  const publishedTime = (post.publishedAt ?? post.createdAt).toISOString();
+
+  return {
+    title: post.title,
+    description: post.excerpt,
+    alternates: {
+      canonical: canonicalPath,
+    },
+    openGraph: {
+      title: post.title,
+      description: post.excerpt,
+      type: "article",
+      url: canonicalPath,
+      images: [
+        {
+          url: post.image,
+          alt: post.title,
+        },
+      ],
+      publishedTime,
+      modifiedTime: post.updatedAt.toISOString(),
+      authors: [post.author],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: post.title,
+      description: post.excerpt,
+      images: [post.image],
+    },
+  };
+}
+
 export default async function BlogPostPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
-  const post = await getPostBySlug(slug);
+  const post = await getPublishedPostBySlug(slug);
 
   if (!post) {
     notFound();

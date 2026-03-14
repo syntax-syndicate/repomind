@@ -38,6 +38,7 @@ async function main() {
         category: post.category,
         image: post.image,
         published: true,
+        publishedAt: new Date(),
       },
     });
     console.log(`- Seeded unique post: ${post.slug}`);

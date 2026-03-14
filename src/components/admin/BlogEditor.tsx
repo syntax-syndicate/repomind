@@ -29,6 +29,7 @@ export default function BlogEditor({ initialPost }: BlogEditorProps) {
   const [isPreview, setIsPreview] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "success" | "error">("idle");
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -38,6 +39,7 @@ export default function BlogEditor({ initialPost }: BlogEditorProps) {
   const handleSave = async (published: boolean) => {
     setIsSaving(true);
     setSaveStatus("saving");
+    setSaveError(null);
     try {
       const dataToSave = { ...post, published };
       const result = await savePostAction(dataToSave);
@@ -51,6 +53,7 @@ export default function BlogEditor({ initialPost }: BlogEditorProps) {
     } catch (error) {
       console.error("Failed to save post:", error);
       setSaveStatus("error");
+      setSaveError(error instanceof Error ? error.message : "Failed to save post. Please try again.");
     } finally {
       setIsSaving(false);
     }
@@ -105,7 +108,7 @@ export default function BlogEditor({ initialPost }: BlogEditorProps) {
 
       {saveStatus === "error" && (
         <div className="bg-red-500/10 border border-red-500/20 text-red-400 px-4 py-2 rounded-xl text-sm">
-            Failed to save post. Please try again.
+            {saveError || "Failed to save post. Please try again."}
         </div>
       )}
 
@@ -153,8 +156,14 @@ export default function BlogEditor({ initialPost }: BlogEditorProps) {
                 value={post.slug}
                 onChange={handleChange}
                 placeholder="post-slug-url"
+                disabled={Boolean(post.id && (post.published || post.publishedAt))}
                 className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-sm outline-none focus:border-purple-500/50 transition-colors"
               />
+              {Boolean(post.id && (post.published || post.publishedAt)) && (
+                <p className="text-[11px] text-zinc-500">
+                  Slug is locked after first publish to preserve canonical URLs.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">

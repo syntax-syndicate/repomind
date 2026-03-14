@@ -1,5 +1,4 @@
 import BlogEditor from "@/components/admin/BlogEditor";
-import { getPostBySlug, getAllPosts } from "@/lib/services/blog-service";
 import { prisma } from "@/lib/db";
 import { notFound } from "next/navigation";
 

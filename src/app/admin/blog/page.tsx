@@ -63,14 +63,23 @@ export default async function BlogAdminPage() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <Link 
-                        href={`/blog/${post.slug}`}
-                        target="_blank"
-                        className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-blue-400/5 rounded-lg transition-all"
-                        title="View Live"
-                      >
-                        <Eye size={16} />
-                      </Link>
+                      {post.published ? (
+                        <Link 
+                          href={`/blog/${post.slug}`}
+                          target="_blank"
+                          className="p-1.5 text-zinc-500 hover:text-blue-400 hover:bg-blue-400/5 rounded-lg transition-all"
+                          title="View Live"
+                        >
+                          <Eye size={16} />
+                        </Link>
+                      ) : (
+                        <span
+                          className="p-1.5 text-zinc-700 rounded-lg cursor-not-allowed"
+                          title="Drafts are not publicly visible"
+                        >
+                          <Eye size={16} />
+                        </span>
+                      )}
                       <Link 
                         href={`/admin/blog/${post.id}`}
                         className="p-1.5 text-zinc-500 hover:text-purple-400 hover:bg-purple-400/5 rounded-lg transition-all"

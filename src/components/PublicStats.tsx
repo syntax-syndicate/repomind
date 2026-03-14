@@ -9,10 +9,24 @@ export default function PublicStats() {
 
     useEffect(() => {
         let mounted = true;
-        fetchPublicStats().then((data) => {
-            if (mounted) setStats(data);
-        }).catch(console.error);
-        return () => { mounted = false; };
+        const load = async () => {
+            try {
+                const data = await fetchPublicStats();
+                if (mounted) setStats(data);
+            } catch (error) {
+                console.error(error);
+            }
+        };
+
+        void load();
+        const intervalId = setInterval(() => {
+            void load();
+        }, 60_000);
+
+        return () => {
+            mounted = false;
+            clearInterval(intervalId);
+        };
     }, []);
 
     if (!stats) {

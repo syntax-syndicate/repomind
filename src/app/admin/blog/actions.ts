@@ -1,11 +1,10 @@
 "use server";
 
-import { upsertPost, deletePost as deletePostFromDb } from "@/lib/services/blog-service";
+import { savePost, deletePost as deletePostFromDb, type SavePostInput } from "@/lib/services/blog-service";
 import { auth } from "@/lib/auth";
 import { isAdminUser } from "@/lib/admin-auth";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { BlogPost } from "@prisma/client";
 
 async function checkAdmin() {
   const session = await auth();
@@ -14,27 +13,21 @@ async function checkAdmin() {
   }
 }
 
-export async function savePostAction(data: Partial<BlogPost>) {
+export async function savePostAction(data: SavePostInput) {
   await checkAdmin();
-  
-  const result = await upsertPost(data);
-  
+
+  const result = await savePost(data);
+
   revalidatePath("/admin/blog");
-  revalidatePath("/blog");
-  if (result.slug) {
-    revalidatePath(`/blog/${result.slug}`);
-  }
-  
   return result;
 }
 
 export async function deletePostAction(id: string) {
   await checkAdmin();
-  
+
   await deletePostFromDb(id);
-  
+
   revalidatePath("/admin/blog");
-  revalidatePath("/blog");
-  
+
   redirect("/admin/blog");
 }

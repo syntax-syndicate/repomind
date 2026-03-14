@@ -1,6 +1,7 @@
 import { kv } from "@vercel/kv";
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db";
+import { unstable_cache } from "next/cache";
 import type { FalsePositiveReviewSummary } from "@/lib/services/report-false-positives";
 import { getFalsePositiveReviewSummary } from "@/lib/services/report-false-positives";
 
@@ -637,32 +638,43 @@ export async function getAnalyticsData(): Promise<AnalyticsData> {
 
 /**
  * Fetch lightweight, aggregated stats for public viewing (e.g. landing page).
- * Keep this uncached so landing reflects current KV counters immediately.
+ * Cache for 60 seconds to speed up landing page requests while staying fresh.
  */
-export async function getPublicStats() {
-    try {
-        const [totalVisitors, totalQueries, totalScans, manualAdjustments] = await Promise.all([
-            kv.scard("visitors"),
-            kv.get<number>("queries:total"),
-            prisma.repoScan.count(),
-            getManualAnalyticsAdjustments(),
-        ]);
+const getCachedPublicStats = unstable_cache(
+    async () => {
+        try {
+            const [totalVisitors, totalQueries, totalScans, manualAdjustments] = await Promise.all([
+                kv.scard("visitors"),
+                kv.get<number>("queries:total"),
+                prisma.repoScan.count(),
+                getManualAnalyticsAdjustments(),
+            ]);
 
-        return {
-            totalVisitors: (totalVisitors || 0) + manualAdjustments.visitors,
-            totalQueries: (totalQueries || 0) + manualAdjustments.queries,
-            totalScans,
-        };
-    } catch (error: unknown) {
-        console.error("Failed to fetch public stats from KV:", error);
-        const errorMessage = error instanceof Error ? error.message : "";
-        if (errorMessage.includes("ECONNREFUSED") || errorMessage.includes("invalid_token")) {
-            console.error("KV authentication or connection failure. Check environment variables.");
+            return {
+                totalVisitors: (totalVisitors || 0) + manualAdjustments.visitors,
+                totalQueries: (totalQueries || 0) + manualAdjustments.queries,
+                totalScans,
+            };
+        } catch (error: unknown) {
+            console.error("Failed to fetch public stats from KV:", error);
+            const errorMessage = error instanceof Error ? error.message : "";
+            if (errorMessage.includes("ECONNREFUSED") || errorMessage.includes("invalid_token")) {
+                console.error("KV authentication or connection failure. Check environment variables.");
+            }
+            return {
+                totalVisitors: 0,
+                totalQueries: 0,
+                totalScans: 0,
+            };
         }
-        return {
-            totalVisitors: 0,
-            totalQueries: 0,
-            totalScans: 0,
-        };
+    },
+    ["public-stats-v1"],
+    {
+        revalidate: 60,
+        tags: ["public-stats"],
     }
+);
+
+export async function getPublicStats() {
+    return getCachedPublicStats();
 }

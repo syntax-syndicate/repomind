@@ -11,34 +11,74 @@ interface BeforeInstallPromptEvent extends Event {
 
 interface IOSNavigator extends Navigator {
     MSStream?: unknown;
+    standalone?: boolean;
+}
+
+function isIosDevice(): boolean {
+    if (typeof window === "undefined") return false;
+    const nav = window.navigator as IOSNavigator;
+    return /iPad|iPhone|iPod/.test(nav.userAgent) && !nav.MSStream;
+}
+
+function isInstalled(): boolean {
+    if (typeof window === "undefined") return false;
+
+    const nav = window.navigator as IOSNavigator;
+    const displayModeStandalone = window.matchMedia("(display-mode: standalone)").matches;
+    const displayModeFullscreen = window.matchMedia("(display-mode: fullscreen)").matches;
+    const displayModeMinimalUi = window.matchMedia("(display-mode: minimal-ui)").matches;
+    const iosStandalone = nav.standalone === true;
+    const androidTrustedWebApp = document.referrer.startsWith("android-app://");
+
+    return displayModeStandalone || displayModeFullscreen || displayModeMinimalUi || iosStandalone || androidTrustedWebApp;
 }
 
 export function InstallPWA() {
     const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
-    const [isIOS] = useState(() => {
-        if (typeof window === "undefined") return false;
-        const nav = window.navigator as IOSNavigator;
-        return /iPad|iPhone|iPod/.test(nav.userAgent) && !nav.MSStream;
-    });
-    const [isStandalone] = useState(() => {
-        if (typeof window === "undefined") return false;
-        return window.matchMedia("(display-mode: standalone)").matches;
-    });
+    const [isIOS, setIsIOS] = useState(false);
+    const [installed, setInstalled] = useState(false);
+    const [visible, setVisible] = useState(false);
 
     useEffect(() => {
+        setIsIOS(isIosDevice());
+        setInstalled(isInstalled());
+
+        const media = window.matchMedia("(display-mode: standalone)");
         const handleBeforeInstallPrompt = (e: Event) => {
             // Prevent the mini-infobar from appearing on mobile
             e.preventDefault();
             // Stash the event so it can be triggered later.
             setDeferredPrompt(e as BeforeInstallPromptEvent);
         };
+        const handleAppInstalled = () => {
+            setInstalled(true);
+            setDeferredPrompt(null);
+        };
+        const handleDisplayModeChange = () => {
+            setInstalled(isInstalled());
+        };
 
         window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+        window.addEventListener("appinstalled", handleAppInstalled);
+        media.addEventListener("change", handleDisplayModeChange);
 
         return () => {
             window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+            window.removeEventListener("appinstalled", handleAppInstalled);
+            media.removeEventListener("change", handleDisplayModeChange);
         };
     }, []);
+
+    useEffect(() => {
+        const shouldShow = !installed && (Boolean(deferredPrompt) || isIOS);
+        if (!shouldShow) {
+            setVisible(false);
+            return;
+        }
+
+        const timer = window.setTimeout(() => setVisible(true), 120);
+        return () => window.clearTimeout(timer);
+    }, [deferredPrompt, installed, isIOS]);
 
     const handleInstallClick = async () => {
         if (isIOS) {
@@ -65,22 +105,18 @@ export function InstallPWA() {
         }
     };
 
-    // Don't show if already installed or on desktop (md:hidden handles desktop view, but we also check standalone)
-    if (isStandalone) return null;
-
-    // Render logic:
-    // 1. If deferredPrompt is set (Android/Chrome), show button.
-    // 2. If iOS, show button (since iOS doesn't fire beforeinstallprompt).
-    // 3. CSS hides it on desktop (md:hidden).
-    if (!deferredPrompt && !isIOS) return null;
+    if (installed || (!deferredPrompt && !isIOS)) return null;
 
     return (
         <button
             onClick={handleInstallClick}
-            className="fixed bottom-6 right-6 z-50 md:hidden flex items-center gap-2 px-4 py-3 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 rounded-full shadow-lg transition-all duration-300 transform active:scale-95 animate-in fade-in slide-in-from-bottom-4"
+            aria-label="Install app"
+            title="Install app"
+            className={`fixed bottom-6 right-6 z-50 md:hidden flex h-12 w-12 items-center justify-center rounded-full border border-white/25 bg-black/55 text-white shadow-lg shadow-black/40 backdrop-blur-md transition-all duration-500 ease-out active:scale-95 ${
+                visible ? "translate-y-0 scale-100 opacity-100" : "pointer-events-none translate-y-3 scale-90 opacity-0"
+            }`}
         >
-            <Download className="w-5 h-5 text-blue-400" />
-            <span className="font-medium text-sm text-white">Install App</span>
+            <Download className="h-5 w-5 text-blue-300" />
         </button>
     );
 }
