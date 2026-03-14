@@ -41,7 +41,7 @@ export function MessageContent({
     const repairedContent = useMemo(() => repairMarkdown(content), [content]);
     const isStreamingMessage = isStreaming || messages[messages.length - 1]?.id === messageId;
 
-    const components = {
+    const components = useMemo(() => ({
         code: ({ className, children, inline, ...props }: MarkdownCodeProps) => {
             const match = /language-(\w+)/.exec(className ?? "");
             const isMermaid = match?.[1] === "mermaid";
@@ -118,7 +118,7 @@ export function MessageContent({
         td: ({ children }: MarkdownContainerProps) => (
             <td className="px-4 py-2 text-sm text-zinc-300 border border-zinc-700">{children}</td>
         ),
-    };
+    }), [currentOwner, currentRepo, isStreamingMessage]);
 
     return (
         <div className="w-full [&>*:first-child]:!mt-0">
