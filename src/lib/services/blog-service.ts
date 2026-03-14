@@ -52,7 +52,7 @@ function toCreatePayload(data: SavePostInput, slug: string): Prisma.BlogPostCrea
     content: data.content || "",
     author: data.author || "RepoMind Engineering",
     category: data.category || "Engineering",
-    image: data.image || "/preview_example.png",
+    image: data.image || "/assets/landing_page.png",
     date:
       data.date ||
       new Date().toLocaleDateString("en-US", {

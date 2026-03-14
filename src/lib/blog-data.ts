@@ -17,7 +17,7 @@ export const BLOG_POSTS: BlogPost[] = [
     date: "March 14, 2026",
     author: "RepoMind Engineering",
     category: "Engineering",
-    image: "/preview_example.png",
+    image: "/assets/landing_page.png",
     content: `
 # Why Agentic CAG Beats RAG for Large Codebases
 
@@ -69,7 +69,7 @@ Whether you are performing a [security scan](/) or trying to [visualize a reposi
     date: "March 12, 2026",
     author: "Product Team",
     category: "Product",
-    image: "/features.png",
+    image: "/assets/repomind_capabilities.png",
     content: `
 # RepoMind vs. Greptile & Copilot: The Best Free Alternative for Repo Chat
 
@@ -124,7 +124,7 @@ If you need a tool for **quick repository analysis** or [vulnerability detection
     date: "March 10, 2026",
     author: "Design & UX",
     category: "Engineering",
-    image: "/flowchat_example.png",
+    image: "/assets/architecture_example.png",
     content: `
 # From URL to Architecture: How to Generate GitHub Flowcharts with AI
 

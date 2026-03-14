@@ -1,401 +1,220 @@
 # RepoMind
 
-![RepoMind Banner](/public/repomind.png)
+<p align="center"><strong>Stop reading code. Start talking to it.</strong></p>
 
-<div align="center">
+<p align="center">
+  <a href="https://github.com/403errors/repomind"><img src="https://img.shields.io/github/stars/403errors/repomind?style=social" alt="GitHub stars" /></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="MIT License" /></a>
+  <a href="https://nextjs.org/"><img src="https://img.shields.io/badge/Next.js-16-black" alt="Next.js" /></a>
+  <a href="https://ai.google.dev/"><img src="https://img.shields.io/badge/Gemini-3_Flash_Preview-blue" alt="Gemini" /></a>
+</p>
 
-[![GitHub stars](https://img.shields.io/github/stars/403errors/repomind?style=social)](https://github.com/403errors/repomind)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Next.js](https://img.shields.io/badge/Next.js-16-black)](https://nextjs.org/)
-[![Gemini AI](https://img.shields.io/badge/Gemini-3_Flash_Preview-blue)](https://ai.google.dev/)
-<br>
-[![Analyzed by RepoMind](https://img.shields.io/badge/Analyzed%20by-RepoMind-4F46E5?style=for-the-badge)](https://repomind.in/repo/facebook/react)
+<p align="center">
+  <a href="https://repomind.in"><strong>Try RepoMind Live</strong></a>
+  ·
+  <a href="https://repomind.in/repo/facebook/react"><strong>See React Analyzed</strong></a>
+  ·
+  <a href="https://github.com/403errors/repomind/issues"><strong>Contribute</strong></a>
+</p>
 
-**[Try RepoMind now!](https://repomind.in)** 
+![RepoMind Demo](public/assets/demo_repomind.gif)
 
-**[Preview RepoMind on RepoMind 🐥](https://repomind.in/repo/403errors/repomind)**
+RepoMind is an open-source, AI-powered platform for understanding public GitHub repositories and developer profiles with **Agentic CAG**. It combines deep code reasoning, architecture visualization, and security scanning into a fast, browser-first experience.
 
-</div>
+## Why RepoMind
+
+- **Zero setup for public repos**: paste a repo or profile and start immediately.
+- **Context-aware analysis**: selects full, relevant files instead of fragmented vector chunks.
+- **Visual understanding**: generates architecture maps and flow diagrams for faster onboarding.
+- **Security scanning built in**: quick/deep scans with verification-focused reporting.
+- **Contributor-friendly codebase**: clear TypeScript services, tests, and modular features.
+
+## Product Highlights
+
+### Landing Experience
+
+![RepoMind Landing Page](public/assets/landing_page.png)
+
+### Repo Profile Intelligence
+
+![Repo Profile Example](public/assets/repo_profile.png)
+
+### Core Capabilities
+
+![RepoMind Capabilities](public/assets/repomind_capabilities.png)
+
+## Agentic CAG Architecture
+
+RepoMind uses **Agentic Context-Augmented Generation (CAG)**. Instead of relying only on embeddings, it prunes and loads coherent source context to answer architecture and implementation questions reliably.
+
+![CAG vs RAG](public/assets/cag_vs_rag.gif)
+
+![Architecture Example](public/assets/architecture_example.png)
+
+## Architecture Flowcharts
+
+These diagrams provide a quick mental model of how RepoMind processes queries, optimizes performance, and validates security findings.
+
+### 1) Query + Context Pipeline
+
+```mermaid
+graph TD
+    A[User enters repo or profile query] --> B[Context-Aware Engine]
+    B --> C[Repository/Profile metadata fetch]
+    B --> D[Hierarchical file pruning]
+    D --> E[Relevant full-file context assembly]
+    C --> F[Prompt synthesis]
+    E --> F
+    F --> G[Gemini model execution]
+    G --> H[Streaming response + optional diagrams]
+```
+
+### 2) Caching + Retrieval Strategy
+
+```mermaid
+graph TD
+    A[Request file/data] --> B{KV cache hit?}
+    B -->|Yes| C{Compressed entry?}
+    C -->|Yes| D[Decompress]
+    C -->|No| E[Return cached payload]
+    D --> E
+    B -->|No| F[Fetch from GitHub API]
+    F --> G{Payload <= 2MB?}
+    G -->|Yes| H[Gzip + store in KV]
+    G -->|No| I[Skip cache write]
+    H --> J[Return response]
+    I --> J
+```
+
+### 3) Security Scan + Verification Flow
+
+```mermaid
+graph TD
+    A[Start scan] --> B{Quick or Deep}
+    B --> C[Collect scoped files + dependencies]
+    C --> D[Deterministic security engine]
+    D --> E{AI assist enabled?}
+    E -->|Yes| F[AI validation pass]
+    E -->|No| G[Verification gate]
+    F --> G
+    G --> H{Verified true?}
+    H -->|Yes| I[Show finding in report]
+    H -->|No| J[Hide as rejected/inconclusive]
+```
+
+## Security Scanning
+
+RepoMind includes a verification-first scanning flow for application and dependency risks.
+
+- Quick scan for fast triage
+- Deep scan for broader coverage
+- Verified-first reporting pipeline
+- Actionable fixes inside repo chat flow
+
+![Security Report](public/assets/security_report.png)
+
+## Dashboard Experience
+
+![Dashboard Overview](public/assets/dashboard_overview.png)
+
+![Recent Scans](public/assets/dashboard_recent_scans.png)
+
+![My Repositories](public/assets/dashboard_my_repos.png)
+
+![Starred Repositories](public/assets/dashboard_starred_repos.png)
+
+## Getting Started
+
+### Use Hosted App
+
+1. Open [repomind.in](https://repomind.in)
+2. Enter `owner/repo` or a GitHub username
+3. Ask architecture, code, or security questions
+
+### Run Locally
+
+#### Prerequisites
+
+- Node.js 18+
+- npm
+- GitHub token
+- Gemini API key
+
+#### Setup
+
+```bash
+git clone https://github.com/403errors/repomind.git
+cd repomind
+npm install
+cp .env.example .env.local
+npm run dev
+```
+
+Open [http://localhost:3000](http://localhost:3000).
+
+### Developer Commands
+
+```bash
+npm run dev            # local dev server
+npm run lint           # lint checks
+npm run test           # test suite
+npm run test:security  # security-focused tests
+npm run build          # production build
+```
+
+## Contributing
+
+We want RepoMind to be one of the best OSS projects for AI-assisted code intelligence. Contributions of all sizes are welcome.
+
+### Why contribute
+
+- Work on practical agentic AI for real repositories
+- Improve developer tooling used by public users
+- Ship visible features quickly with direct product impact
+
+### High-Impact Areas
+
+- **Query pipeline and reasoning quality**: improve file selection, prompting, and response quality
+- **Security scanner and verification**: improve detection accuracy and reduction of false positives
+- **Dashboard and DevTools UX**: improve discoverability, workflows, and performance
+- **Docs, tests, and reliability**: strengthen onboarding and confidence for contributors
+
+### Contribution Workflow
+
+1. Fork the repository
+2. Create a branch: `git checkout -b feature/your-change`
+3. Make focused changes with tests
+4. Run `npm run lint` and `npm run test`
+5. Open a pull request with context, screenshots, and validation notes
+
+### Pull Request Expectations
+
+- Keep scope clear and reviewable
+- Add or update tests when behavior changes
+- Update docs when introducing user-visible changes
+- Include before/after screenshots for UI work
+
+## Changelog
+
+Recent major updates are tracked in [CHANGELOG.md](CHANGELOG.md), including improvements through **v1.3.6 (2026-02-23)**.
+
+## Tech Stack
+
+- [Next.js](https://nextjs.org/)
+- [React](https://react.dev/)
+- [Gemini](https://ai.google.dev/)
+- [Prisma](https://www.prisma.io/)
+- [Vercel KV](https://vercel.com/docs/storage/vercel-kv)
+- [Vitest](https://vitest.dev/)
+
+## License
+
+Licensed under the MIT License. See [LICENSE](LICENSE).
 
 ---
 
-**RepoMind** is a free, AI-powered application using Agentic CAG to chat with any public GitHub repository or developer profile. Using an advanced **Context-Aware Engine**, RepoMind performs deep code analysis without requiring you to clone repositories.
-
-> **Stop reading code. Start talking to it.** 
-
-![RepoMind Preview](/public/preview_example.png)
-
-##  Features
-
-![All Features Overview](/public/features.png)
-
-###  Context-Aware Engine
-- **Hierarchical Pruning**: For large repositories (1,000+ files), RepoMind uses a multi-stage drill-down with **Gemini 3 Flash Preview** to narrow down thousands of files into relevant modules.
-- **Smart Context Loading**: Intelligently selects relevant code files based on your query, bypassing AI selection if a filename is explicitly mentioned.
-- **Model Selection (Flash vs Thinking)**: Toggle between **Flash** mode for instant answers and **Thinking** mode for deep reasoning and complex logic analysis using Gemini 3's reasoning capabilities.
-- **Noise Filtering**: Automatically ignores `node_modules`, lockfiles, and build artifacts to focus on source code.
-- **Multi-File Understanding**: Traces dependencies and imports to understand how different parts of the codebase interact.
-
-###  Agentic CAG vs RAG: The Architecture
-RepoMind uses **Agentic Context Augmented Generation (Agentic CAG)**, not traditional RAG. We don't chop your code into fragmented vectors; we load full, relevant files into the model's long context window for superior understanding.
-
-| Feature | Traditional RAG |  RepoMind (Agentic CAG) |
-| :--- | :--- | :--- |
-| **Data Unit** | Small Chunks (Vectors) | **Full Files** |
-| **Retrieval** | Similarity Search (Vector DB) | **AI Agent Selection** + **Smart Caching** |
-| **Context** | Fragmented | **Coherent & Complete** |
-| **Memory** | None (Stateless) | **KV Cache** (Remembers relevant files) |
-
-###  Caching Optimization Strategy
-
-To ensure lightning-fast responses while staying within infrastructure limits, RepoMind employs a smart caching strategy:
-
-```mermaid
-graph TD
-    req[Request File/Data] --> kv{Check KV Cache}
-    
-    kv -->|Hit| checkComp{Compressed?}
-    checkComp -->|Yes| decomp[Decompress with Gunzip]
-    checkComp -->|No| ret1[Return Data]
-    decomp --> ret1
-    
-    kv -->|Miss| gh[Fetch from GitHub API]
-    gh --> checkSize{Size > 2MB?}
-    
-    checkSize -->|Yes| skip[Skip Caching]
-    checkSize -->|No| comp[Compress with Gzip]
-    
-    comp --> store[Store in KV with gz: prefix]
-    store --> ret2[Return Data]
-    skip --> ret2
-    
-    ret2 --> req
-```
-
-###  Workflow Architecture
-
-```mermaid
-graph TD
-    User[User Query] -->|Input| Engine[Context-Aware Engine]
-    
-    subgraph " Blazing Fast Optimization"
-        Engine -->|Lazy Load| Profile[Profile Metadata]
-        Profile -->|Explicit API| Lang[Language & Topics]
-        Engine -->|Flash Selection| Select[Smart File Selection]
-        Select -->|Hierarchical Pruning| Prune[Target Modules]
-        Prune -->|Minimizes Tokens| Context[Relevant Context]
-    end
-    
-    subgraph " Native Web Search"
-        Engine -->|Unknown Topic?| Search[Google Search]
-        Search -->|Real-time Data| Synthesis[Answer Synthesis]
-    end
-    
-    Context --> Synthesis
-    Profile --> Synthesis
-    Synthesis -->|Stream| UI[Chat Interface]
-```
-
-###  Evolution & Updates
-We are constantly improving RepoMind. Check out our **[CHANGELOG.md](CHANGELOG.md)** for the full history of updates, including our journey from v1 to the latest **v1.3.2**.
-
-###  Visual Architecture Maps
-
-![Architecture Flowchart Example](/public/flowchat_example.png)
-
-- **Auto-Generated Diagrams**: Instantly turn complex code logic into clear Mermaid flowcharts and sequence diagrams.
-- **Interactive Zoom/Pan**: Explore large diagrams with intuitive controls.
-- **Export Options**: Save diagrams as images for documentation or presentations.
-
-###  Deep Profile Intelligence (USP)
-- **Metadata Enrichment**: Uses explicit GitHub API data for languages and topics, making profile analysis faster and more accurate.
-- **Developer Fingerprinting**: Analyze coding style, commit patterns, and language preferences of any GitHub user.
-- **Cross-Repo Context**: Aggregate knowledge from multiple repositories to understand a developer's full skillset.
-- **Resume Generation**: Create instant technical summaries for any developer profile.
-
-###  Zero-Config Security Audits
-
-![Security Scan Example](/public/quick_scan_example.png)
-
-- **Vulnerability Scanning**: Detect SQL injections, XSS, auth flaws, secrets, config issues, and vulnerable dependencies without setting up CI/CD pipelines.
-- **Auto Verification Gate**: Findings are automatically verified with rule-family checks before they are shown to users.
-- **Verified-Only Reports**: Reports and fix prompts only include `AUTO_VERIFIED_TRUE` findings.
-- **Lifecycle + Closure Gate**: Findings move through lifecycle states and can be auto-closed only after regression checks + clean rescan.
-
-#### Vulnerability Scanning Workflow
-
-```mermaid
-graph TD
-    Start[Start Scan] --> Mode[Choose Quick or Deep + Optional AI Assist]
-    Mode --> Deep{Deep Scan?}
-
-    Deep -->|Yes| Auth[Require Auth + Check Monthly Deep Quota]
-    Deep -->|No| Build
-    Auth --> Build[Build Scan Config + Cache Identity]
-
-    Build --> Cache{Cache Hit for repo revision + config?}
-    Cache -->|Yes| Cached[Load Cached Result + Mark fromCache]
-    Cache -->|No| Collect[Collect Scoped Code + Dependency Files]
-
-    Collect --> Deterministic[Deterministic Engine v2]
-    subgraph "Deterministic Engine v2"
-        Deterministic --> AST[AST + Taint Flow Checks]
-        Deterministic --> Secret[Secret Detection]
-        Deterministic --> Config[Config Misconfiguration Rules]
-        Deterministic --> Dep[Version-Aware Dependency Checks]
-    end
-
-    AST --> Rank
-    Secret --> Rank
-    Config --> Rank
-    Dep --> Rank
-    Rank[Confidence Score + Fingerprint Dedupe] --> AIToggle{AI Assist Enabled?}
-
-    AIToggle -->|No| Verify
-    AIToggle -->|Yes| AIPass[Redact Sensitive Values + AI Validation]
-    AIPass --> Merge[Merge AI + Deterministic Findings]
-    Merge --> Verify[Automatic Verification Gate]
-    Verify -->|Verified True| Finalize[Save Scan + Render Verified-Only Report]
-    Verify -->|Rejected / Inconclusive| Hidden[Hidden from User Report + Telemetry]
-    Cached --> Finalize
-    Finalize --> CloseGate[Fix Verification: Regression Gate + Rescan + Auto Signoff]
-```
-
-- **Quick Scan**: Deterministic-first checks optimized for speed (up to 20 files).
-- **Deep Scan**: Broader deterministic analysis (up to 60 files), with optional AI assistance.
-- **Verification States**: `DETECTED`, `AUTO_VERIFIED_TRUE`, `AUTO_REJECTED_FALSE`, `INCONCLUSIVE_HIDDEN`, `OPEN`, `CLOSED`.
-- **Rollback Controls**: Verification/reporting/closure gates are flag-driven for rapid fallback.
-
-###  Mobile-First Experience
-- **Analyze on the Go**: The only advanced code analysis tool optimized for mobile browsers.
-- **Touch-Friendly Interface**: Swipe, tap, and zoom through codebases on your phone or tablet.
-- **Responsive DevTools**: Access full debugging and search capabilities from anywhere.
-
-###  Semantic Code Search
-- **Natural Language Search**: "Find where user authentication happens"
-- **Regex & AST Search**: Power-user tools for precise structural code matching.
-- **Instant Navigation**: Jump directly to relevant lines across thousands of files.
-
-## 🆚 RepoMind vs The Market
-
-RepoMind is designed for **instant, zero-setup analysis**. While other tools require installation or permissions, RepoMind works immediately in your browser.
-
-| Feature |  RepoMind |  GitHub Copilot (Web) |  Greptile |  Onboard AI |
-| :--- | :---: | :---: | :---: | :---: |
-| **Platform** | **Web (Any Browser)** |  Web (GitHub.com) |  Web Dashboard |  Web Dashboard |
-| **Access** | **Instant (Public URL)** | Requires Repo Access | Requires App Install | Requires App Install |
-| **Pricing** | **100% Free** | Enterprise / Paid | Paid (Free Tier) | Paid (Free Tier) |
-| **Visual Maps** | **Auto-Flowcharts** |  No |  No |  No |
-| **Profile Insights** | **Developer Analysis** |  No |  No |  No |
-| **Mobile UX** | **Mobile-First** |  Desktop Focused |  Desktop Only |  Desktop Only |
-| **Security Scan** | **Free AI Audit** |  (Advanced Security) |  No |  No |
-| **Tech Stack** | **Context-Aware** | Indexed Search | Proprietary Index | Vector Search |
-
-###  Why RepoMind?
-
-**1. The "Just Works" Factor**
-Competitors like **Greptile** and **Onboard AI** require you to install GitHub Apps, grant permissions, and wait for indexing. **RepoMind** works instantly on any public repository URL. No login or installation required to start.
-
-**2. Visuals > Text**
-**GitHub Copilot** and **Onboard AI** give you walls of text. RepoMind generates **interactive flowcharts** and diagrams, helping you visualize the code's architecture instantly.
-
-**3. Mobile Freedom**
-RepoMind is the only tool in this class built with a **mobile-first** philosophy. Debug code, review PRs, or learn a new library from your phone while commuting.
-
-**4. Profile Intelligence**
-We don't just analyze code; we analyze **coders**. RepoMind is the only platform that aggregates data across a developer's entire portfolio to give you a "resume-style" analysis of their skills and habits.
-
-##  Getting Started
-
-### Prerequisites
-- **Node.js** 18+ and npm
-- **GitHub Personal Access Token** ([Create one here](https://github.com/settings/tokens))
-- **Google Gemini API Key** ([Get one here](https://ai.google.dev/))
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/403errors/repomind.git
-   cd repomind
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Set up environment variables**
-   ```bash
-   cp .env.example .env.local
-   ```
-   
-   Edit `.env.local` and add your keys:
-   ```env
-    # GitHub Token
-    GITHUB_TOKEN="your_github_token"
-
-    # Gemini API Key
-    GEMINI_API_KEY="your_gemini_api_key"
-
-    #Caching Vercel KV
-    KV_REST_API_READ_ONLY_TOKEN="your_kv_rest_api_read_only_token"
-    KV_REST_API_TOKEN="your_kv_rest_api_token"
-    KV_REST_API_URL="your_kv_rest_api_url"
-    KV_URL="your_kv_url"
-    REDIS_URL="your_redis_url"
-
-    # NextAuth
-    AUTH_GITHUB_ID="your_github_client_id"
-    AUTH_GITHUB_SECRET="your_github_client_secret"
-    AUTH_SECRET="your_random_32_plus_char_secret"
-
-    # Postgres (Neon)
-    DATABASE_URL="your_neon_pooled_connection_url"
-    DIRECT_URL="your_neon_direct_connection_url" # Required for migrations/deploy (non-pooler host)
-
-    # Resend (Transactional email)
-    RESEND_API_KEY="your_resend_api_key"
-    RESEND_FROM_EMAIL="RepoMind <onboarding@yourdomain.com>"
-    RESEND_WEBHOOK_SECRET="your_resend_webhook_secret"
-
-    # Internal job auth (email retries)
-    EMAIL_RETRY_JOB_SECRET="your_internal_retry_secret"
-
-    # Security verification pipeline (optional)
-    SECURITY_VERIFICATION_GATE="true"
-    SECURITY_VERIFIED_ONLY_REPORTS="true"
-    SECURITY_AUTO_CLOSURE_GATE="true"
-    SECURITY_DEPENDENCY_LIVE_ADVISORY="true"
-    SECURITY_VERIFICATION_AUTO_THRESHOLD="0.75"
-    SECURITY_VERIFICATION_REJECT_THRESHOLD="0.45"
-    SECURITY_VERIFICATION_BENCH_PRECISION="0.8"
-    SECURITY_VERIFICATION_BENCH_RECALL="0.75"
-    SECURITY_VERIFIED_CANARY_PERCENT="100"
-   ```
-
-4. **Run the development server**
-   ```bash
-   npm run dev
-   ```
-
-5. **Open the app**
-   
-   Visit [http://localhost:3000](http://localhost:3000) in your browser
-
-##  Usage Examples
-
-### Analyze a Repository
-```
-Enter: "facebook/react"
-Ask: "How does the reconciliation algorithm work?"
-Ask: "Find all lifecycle methods"
-Ask: "Show me the file tree structure"
-```
-
-### Explore a Developer Profile
-```
-Enter: "torvalds"
-Ask: "What languages does Linus primarily use?"
-Ask: "Show me his most recent projects"
-Ask: "What's his coding style like?"
-```
-
-### Security Scanning
-```
-Enter: "your-org/your-repo"
-Open DevTools → Security Scan
-Review verified vulnerabilities by severity
-Get actionable fix recommendations from verified findings only
-```
-
-### Code Quality Check
-```
-Open DevTools → Quality Analysis
-Select a file to analyze
-View complexity metrics and issues
-Get improvement suggestions
-```
-
-### Advanced Search
-```
-Open DevTools → Search
-Search for "useState" (Text)
-Search for "function.*async" (Regex)
-Search for functions named "handle" (AST)
-```
-
-##  DevTools Features
-
-RepoMind includes a powerful DevTools panel accessible via the wrench icon:
-
-###  Search
-- **Text Search**: Fast string matching with case sensitivity options
-- **Regex Search**: Complex pattern matching with full regex support
-- **AST Search**: Structural search for functions, classes, variables, imports
-- **Results**: File paths, line numbers, code snippets with context
-
-###  Quality Analysis
-- **Metrics**: Cyclomatic complexity, LOC, function count, maintainability index
-- **AI Review**: Gemini-powered analysis for style, bugs, best practices
-- **Severity Levels**: Critical, high, medium, low issue classification
-- **Suggestions**: Actionable recommendations with line numbers
-
-###  Generators
-- **Documentation**: Auto-generate comprehensive docs for any file
-- **Test Generation**: Create unit tests based on code structure
-- **Refactoring**: Get AI suggestions for improving code quality
-
-###  Help
-- Quick reference guide
-- Keyboard shortcuts
-- Feature explanations
-
-##  Privacy & Security
-
-- **GitHub Token**: Stored locally in your browser, never sent to our servers
-- **API Keys**: Environment variables, not exposed to client
-- **Data Storage**: User auth and core history are stored in Postgres; cache and counters are stored in KV
-- **Server-Side Processing**: AI analysis happens on Vercel Edge, not client-side
-- **Open Source**: Audit the code yourself
-
-##  Contributing
-
-We welcome contributions! Here's how you can help:
-
-1. **Fork the repository**
-2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
-3. **Commit your changes**: `git commit -m 'Add amazing feature'`
-4. **Push to the branch**: `git push origin feature/amazing-feature`
-5. **Open a Pull Request**
-
-### Development Guidelines
-- Follow existing code style
-- Write meaningful commit messages
-- Update documentation for new features
-- Test on multiple screen sizes
-
-##  License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-##  Acknowledgments
-
-Built with amazing open-source technologies:
-- [Next.js](https://nextjs.org/) - React framework
-- [Google Gemini](https://ai.google.dev/) - AI model
-- [Vercel](https://vercel.com/) - Hosting and KV storage
-- [GitHub](https://github.com/) - Repository data
-- [Tailwind CSS](https://tailwindcss.com/) - Styling
-- [Framer Motion](https://www.framer.com/motion/) - Animations
-- [Mermaid](https://mermaid.js.org/) - Diagrams
-
----
-
-<div align="center">
-
-**Made with ❤️ by [403errors](https://github.com/403errors)**
-
-[ Star on GitHub](https://github.com/403errors/repomind) • [ Report Bug](https://github.com/403errors/repomind/issues) • [ Request Feature](https://github.com/403errors/repomind/issues)
-
-</div>
+<p align="center">
+  Built by <a href="https://github.com/403errors">403errors</a> ·
+  <a href="https://github.com/403errors/repomind">Star on GitHub</a> ·
+  <a href="https://github.com/403errors/repomind/issues">Report Issue</a>
+</p>

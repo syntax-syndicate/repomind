@@ -67,7 +67,7 @@ export const metadata: Metadata = {
     siteName: "RepoMind",
     images: [
       {
-        url: "/repomind.png",
+        url: "/no-bg-repomind.png",
         width: 1200,
         height: 630,
         alt: "RepoMind AI - GitHub Repository Visualizer and Chat",
@@ -80,7 +80,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "RepoMind - Stop reading it! Start talking to it!",
     description: "Agentic CAG-powered analysis for GitHub repositories. Chat with your codebase, generate visual flowcharts, uncover deep insights, and accelerate development.",
-    images: ["/repomind.png"],
+    images: ["/no-bg-repomind.png"],
     creator: "@repomind",
   },
   robots: {

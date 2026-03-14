@@ -20,7 +20,7 @@ export default function BlogEditor({ initialPost }: BlogEditorProps) {
     excerpt: "",
     content: "",
     category: "Engineering",
-    image: "/preview_example.png",
+    image: "/assets/landing_page.png",
     author: "RepoMind Engineering",
     published: false,
     ...initialPost
@@ -206,10 +206,10 @@ export default function BlogEditor({ initialPost }: BlogEditorProps) {
               />
               <div className="relative aspect-video rounded-lg overflow-hidden border border-white/10 mt-2">
                   <img 
-                    src={post.image || "/preview_example.png"} 
+                    src={post.image || "/assets/landing_page.png"} 
                     alt="Preview" 
                     className="object-cover w-full h-full"
-                    onError={(e) => (e.currentTarget.src = "/preview_example.png")}
+                    onError={(e) => (e.currentTarget.src = "/assets/landing_page.png")}
                   />
               </div>
             </div>

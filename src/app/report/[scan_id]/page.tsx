@@ -55,7 +55,7 @@ export async function generateMetadata({ params }: { params: Promise<{ scan_id: 
             type: 'website',
             images: [
                 {
-                    url: '/repomind.png', // Ideally this would be a dynamically generated OG image endpoint
+                    url: '/no-bg-repomind.png', // Ideally this would be a dynamically generated OG image endpoint
                     width: 1200,
                     height: 630,
                     alt: 'Security Scan Summary',
@@ -66,7 +66,7 @@ export async function generateMetadata({ params }: { params: Promise<{ scan_id: 
             card: 'summary_large_image',
             title: `RepoMind Security Scan: ${owner}/${repo}`,
             description: desc,
-            images: ['/repomind.png'],
+            images: ['/no-bg-repomind.png'],
         }
     };
 }
