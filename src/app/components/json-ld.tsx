@@ -11,6 +11,7 @@ export default function JsonLd() {
                     "@context": "https://schema.org",
                     "@type": "WebSite",
                     name: "RepoMind",
+                    alternateName: ["RepoMind AI", "repomind.in"],
                     url: baseUrl,
                 }),
             }}
