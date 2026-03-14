@@ -2,7 +2,7 @@ import BlogEditor from "@/components/admin/BlogEditor";
 
 export default function NewBlogPostPage() {
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       <BlogEditor />
     </div>
   );

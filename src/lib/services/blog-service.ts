@@ -53,6 +53,7 @@ function toCreatePayload(data: SavePostInput, slug: string): Prisma.BlogPostCrea
     author: data.author || "RepoMind Engineering",
     category: data.category || "Engineering",
     image: data.image || "/assets/landing_page.png",
+    keywords: data.keywords ?? null,
     date:
       data.date ||
       new Date().toLocaleDateString("en-US", {
@@ -122,6 +123,7 @@ export async function savePost(data: SavePostInput) {
       if (typeof data.category === "string") updateData.category = data.category;
       if (typeof data.image === "string") updateData.image = data.image;
       if (typeof data.published === "boolean") updateData.published = data.published;
+      if (typeof data.keywords === "string" || data.keywords === null) updateData.keywords = data.keywords ?? null;
 
       const nextPublished = data.published ?? existing.published;
       if (!existing.publishedAt && nextPublished) {

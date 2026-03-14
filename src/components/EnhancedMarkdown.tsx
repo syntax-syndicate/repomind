@@ -1,3 +1,5 @@
+"use client";
+
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -6,6 +8,7 @@ import rehypeSanitize from "rehype-sanitize";
 import { RepoCard } from "./RepoCard";
 import { DeveloperCard } from "./DeveloperCard";
 import { SmartLink } from "./SmartLink";
+import { Mermaid } from "./Mermaid";
 
 interface ParsedContent {
     type: "markdown" | "repo-card" | "developer-card";
@@ -78,6 +81,31 @@ export function EnhancedMarkdown({ content, components, currentOwner, currentRep
                                         currentRepo={currentRepo}
                                     />
                                 ),
+                                img: (props) => {
+                                    const { src, alt, ...rest } = props;
+                                    if (!src) return null;
+                                    return (
+                                        <span className="block my-6 rounded-xl overflow-hidden border border-white/10">
+                                            <img src={src} alt={alt || ""} {...rest} className="w-full h-auto object-cover" />
+                                        </span>
+                                    );
+                                },
+                                code(props: any) {
+                                    const { children, className, node, ...rest } = props;
+                                    const match = /language-(\w+)/.exec(className || "");
+                                    const isMermaid = match && match[1] === "mermaid";
+                                    
+                                    if (isMermaid) {
+                                        return <Mermaid chart={String(children).replace(/\n$/, "")} />;
+                                    }
+                                    
+                                    return (
+                                        <code className={className || "bg-zinc-800/50 px-1.5 py-0.5 rounded text-sm font-mono text-purple-300"} {...rest}>
+                                            {children}
+                                        </code>
+                                    );
+                                },
+                                p: ({ children }) => <div className="mb-6 last:mb-0 leading-relaxed">{children}</div>,
                                 ...components
                             }}
                             remarkPlugins={[remarkGfm]}

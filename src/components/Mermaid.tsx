@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect, useMemo, useRef } from "react";
 import mermaid from "mermaid";
 import { validateMermaidSyntax, sanitizeMermaidCode, generateMermaidFromJSON } from "@/lib/diagram-utils";

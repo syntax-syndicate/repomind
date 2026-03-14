@@ -15,7 +15,7 @@ export default async function EditBlogPostPage({ params }: { params: Promise<{ i
   }
 
   return (
-    <div className="max-w-6xl mx-auto">
+    <div className="max-w-7xl mx-auto">
       <BlogEditor initialPost={post} />
     </div>
   );
