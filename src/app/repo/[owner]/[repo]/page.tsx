@@ -21,6 +21,7 @@ interface Props {
 export const revalidate = 900;
 
 const REPO_SEGMENT_PATTERN = /^[A-Za-z0-9._-]{1,100}$/;
+const CRAWLER_README_MAX_CHARS = 6000;
 
 function isLikelyCrawler(userAgent: string): boolean {
     return /bot|crawl|spider|slurp|preview|facebookexternalhit|linkedinbot|whatsapp|telegram|discord/i.test(userAgent);
@@ -45,6 +46,29 @@ function isValidOwnerRepo(owner: string, repo: string): boolean {
 function buildRepoSignInHref(owner: string, repo: string): string {
     const callbackUrl = encodeURIComponent(`/repo/${owner}/${repo}`);
     return `/api/auth/signin?callbackUrl=${callbackUrl}`;
+}
+
+function buildCrawlerReadmeExcerpt(readme: string | null): string | null {
+    if (!readme) return null;
+
+    const plain = readme
+        .replace(/```[\s\S]*?```/g, " ")
+        .replace(/`[^`]*`/g, " ")
+        .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+        .replace(/<[^>]+>/g, " ")
+        .replace(/^#{1,6}\s+/gm, "")
+        .replace(/^\s*[-*+]\s+/gm, "• ")
+        .replace(/^\s*\d+\.\s+/gm, "• ")
+        .replace(/\r/g, "")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/\n{3,}/g, "\n\n")
+        .replace(/[ \t]{2,}/g, " ")
+        .trim();
+
+    if (!plain) return null;
+    if (plain.length <= CRAWLER_README_MAX_CHARS) return plain;
+    return `${plain.slice(0, CRAWLER_README_MAX_CHARS).trim()}…`;
 }
 
 function RepoUnavailableState({ owner, repo }: { owner: string; repo: string }) {
@@ -152,7 +176,7 @@ export default async function RepoPage({ params }: Props) {
     }
 
     const userAgent = (await headers()).get('user-agent') || '';
-    const shouldRenderReadmePreview = !isLikelyCrawler(userAgent);
+    const isCrawler = isLikelyCrawler(userAgent);
 
     let detailsData: { languages: RepoLanguage[]; commits: RepoCommit[] } = { languages: [], commits: [] };
     let readmeContent: string | null = null;
@@ -171,6 +195,7 @@ export default async function RepoPage({ params }: Props) {
     }
 
     const fullReadme = normalizeReadmeForPreview(readmeContent);
+    const crawlerReadmeExcerpt = isCrawler ? buildCrawlerReadmeExcerpt(fullReadme) : null;
 
     return (
         <main className="min-h-screen bg-black text-white p-6 md:p-12 overflow-x-hidden relative">
@@ -284,7 +309,19 @@ export default async function RepoPage({ params }: Props) {
                     <CopyBadge owner={owner} repo={repo} />
                 </div>
 
-                {shouldRenderReadmePreview && fullReadme && (
+                {isCrawler && crawlerReadmeExcerpt && (
+                    <section className="bg-zinc-900/30 border border-zinc-800/50 rounded-xl p-8 mb-12">
+                        <div className="flex items-center justify-between border-b border-zinc-800 pb-2 mb-6">
+                            <h2 className="text-xl font-medium text-zinc-300 uppercase tracking-wider text-sm">Repository Overview (README excerpt)</h2>
+                            <span className="text-xs text-zinc-500 bg-zinc-800/50 px-2 py-1 rounded">Crawler view</span>
+                        </div>
+                        <p className="text-zinc-300 leading-relaxed whitespace-pre-line">
+                            {crawlerReadmeExcerpt}
+                        </p>
+                    </section>
+                )}
+
+                {!isCrawler && fullReadme && (
                     <section className="bg-zinc-900/30 border border-zinc-800/50 rounded-xl p-8 mb-12">
                         <div className="flex items-center justify-between border-b border-zinc-800 pb-2 mb-6">
                             <h2 className="text-xl font-medium text-zinc-300 uppercase tracking-wider text-sm">Repository Summary (README)</h2>

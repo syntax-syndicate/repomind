@@ -27,6 +27,24 @@ export default function Footer() {
 
                 <div className="flex items-center gap-6">
                     <a
+                        href="/code-analyzer"
+                        className="text-zinc-500 hover:text-white transition-colors text-sm font-medium"
+                    >
+                        Code Analyzer
+                    </a>
+                    <a
+                        href="/security-scanner"
+                        className="text-zinc-500 hover:text-white transition-colors text-sm font-medium"
+                    >
+                        Security Scanner
+                    </a>
+                    <a
+                        href="/repo-analyzer"
+                        className="text-zinc-500 hover:text-white transition-colors text-sm font-medium"
+                    >
+                        Repo Analyzer
+                    </a>
+                    <a
                         href="/blog"
                         className="text-zinc-500 hover:text-white transition-colors text-sm font-medium"
                     >
