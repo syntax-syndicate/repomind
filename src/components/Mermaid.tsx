@@ -101,7 +101,7 @@ export const Mermaid = ({ chart, isStreaming = false }: MermaidProps) => {
     // During streaming, we don't want to show the full-screen blurring overlay because it makes it
     // look like the UI is blocked. Only show it if we are fixing the diagram or if we have no SVG at all
     // and are NOT in the middle of a stream (i.e. first render or explicit generation).
-    const showOverlay = !svg && (isFixing || (!isStreaming && isGenerating));
+    const showOverlay = !svg && (isFixing || isGenerating);
 
     useEffect(() => {
         if (isStreaming) {

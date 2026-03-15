@@ -16,6 +16,10 @@ const DEFAULT_DEFS = `
   <filter id="premium-shadow" x="-20%" y="-20%" width="140%" height="140%">
     <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.25"/>
   </filter>
+  <filter id="bead-glow" x="-100%" y="-100%" width="300%" height="300%">
+    <feGaussianBlur stdDeviation="4" result="blur" />
+    <feComposite in="SourceGraphic" in2="blur" operator="over" />
+  </filter>
   <linearGradient id="indigo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
     <stop offset="0%" style="stop-color:#6366f1" />
     <stop offset="100%" style="stop-color:#4338ca" />
@@ -28,6 +32,11 @@ const DEFAULT_DEFS = `
     <stop offset="0%" style="stop-color:#3f3f46" />
     <stop offset="100%" style="stop-color:#18181b" />
   </linearGradient>
+  <radialGradient id="bead-grad">
+    <stop offset="0%" style="stop-color:#fff; stop-opacity:0.9" />
+    <stop offset="40%" style="stop-color:#6366f1; stop-opacity:0.6" />
+    <stop offset="100%" style="stop-color:#6366f1; stop-opacity:0" />
+  </radialGradient>
 </defs>
 `;
 

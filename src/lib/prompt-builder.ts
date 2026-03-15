@@ -163,44 +163,38 @@ export function buildRepoMindPrompt(params: RepoMindPromptParams): string {
              - Node Labels: MUST be in double quotes: \`A["Label Text"]\`.
              - Edge Labels: Do NOT quote: \`A -- label --> B\`.
              - Avoid special characters in labels.
-
-         - **IMAGES & VISUAL EXPLANATIONS (STRICT)**:
-           - Use **SVG** inside a ${"```svg"} block for high-fidelity or animated visuals.
-           - All SVG blocks now feature **premium drawing animations** and **full-screen preview**.
-           - **PRODUCTION-GRADE SVG DESIGN SYSTEM**:
-              - **Aesthetics**: Use \`rx="12"\` for main containers, \`rx="6"\` for buttons/items. Use \`stroke-width="1.5"\`.
-              - **Colors**: Zinc-900 Background (#18181b), Zinc-800 Surface (#27272a), Indigo-500 Accents (#6366f1), Emerald-500 Success (#10b981), Rose-500 Error (#f43f5e), Amber-400 Warning (#fbbf24).
-              - **Typography**: Clear, concise, Zinc-300 (#d4d4d8). Use \`font-family="Inter, system-ui, sans-serif"\`.
-              - **Effects**: Use the standard \`premium-shadow\` filter and gradients (\`indigo-grad\`, \`emerald-grad\`, \`zinc-grad\`).
-              - **Responsiveness**: Always use \`viewBox="0 0 800 450"\`. Ensure logical padding (min 40px).
-
-            - **ELITE ANIMATION METAPHORS (SMIL)**:
-              - **Easing**: ALWAYS use \`calcMode="spline" keySplines="0.4 0 0.2 1"\` for smooth transitions.
-              - **Flows**: Small glowing circles moving along paths: \`<animateMotion path="..." dur="3s" repeatCount="indefinite" />\`.
-              - **Pulsing**: \`<animate attributeName="opacity" values="0.4;1;0.4" dur="2s" repeatCount="indefinite" />\` for heartbeat effects.
-              - **Glow**: Animate \`stdDeviation\` inside a filter for breathing elements.
-              - **Entrance**: Use the internal auto-drawing engine (already active), but you can add custom SMIL for persistent dynamics.
+          - **IMAGES & VISUAL EXPLANATIONS (STRICT)**:
+            - Use **SVG** inside a ${"```svg"} block for high-fidelity or animated visuals.
+            - All SVG blocks now feature **premium drawing animations** and **full-screen preview**.
+            - **ELITE SVG 2.0 DESIGN SYSTEM (PRODUCTION-GRADE)**:
+               - **Aesthetics**: Use \`rx="12"\` for containers, \`rx="6"\` for items. Stroke: \`1.5px\`. 
+               - **Color Palette**: Zinc-950 (#09090b) Border, Zinc-900 (#18181b) Surface, Indigo-500 (#6366f1) Primary, Emerald-500 (#10b981) Data, Rose-500 (#f43f5e) Error.
+               - **Typography**: Inter/System font. Clean Zinc-300 (#d4d4d8) labels.
+               - **PRECISE BEAD SYSTEM**: Data packets (beads) MUST be \`<circle r="4" fill="url(#bead-grad)" filter="url(#bead-glow)" />\`.
+               - **ULTRA-FLUID SMIL**: 
+                 - Easing: ALWAYS use \`calcMode="spline" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1"\` (Standard) or \`0.68 -0.55 0.27 1.55\` (Elastic).
+                 - Fluidity: Use multiple beads on the same path with staggered delays (e.g., \`0s\`, \`0.2s\`, \`0.4s\`) to create a "trailing" data flow.
+                 - Loops: Ensure seamless loops with \`repeatCount="indefinite"\` and matching start/end values.
+               - **LAYOUT MATH**: Align everything to an 800x450 grid. Use center-anchored coordinates for moving parts.
+               - **EFFECTS**: Use \`premium-shadow\`, \`indigo-grad\`, \`emerald-grad\`, \`zinc-grad\`, \`bead-grad\`, and \`bead-glow\`.
 
             - **SVG STRUCTURE TEMPLATE**:
               \`\`\`svg
               <svg viewBox="0 0 800 450" xmlns="http://www.w3.org/2000/svg">
-                <defs>
-                  <filter id="premium-shadow" x="-20%" y="-20%" width="140%" height="140%">
-                    <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.25"/>
-                  </filter>
-                  <linearGradient id="indigo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style="stop-color:#6366f1" />
-                    <stop offset="100%" style="stop-color:#4338ca" />
-                  </linearGradient>
-                </defs>
-                <!-- Your elite content here -->
+                <!-- Defs are injected automatically by the engine; you don't need to repeat them unless custom -->
+                <rect x="0" y="0" width="800" height="450" rx="16" fill="#18181b" stroke="#27272a" stroke-width="1"/>
+                <!-- Elite visual content + precise SMIL animations -->
               </svg>
               \`\`\`
 
             - **VISUAL DECISION LOGIC**:
-              1. If user asks for an **"Image"** (e.g., "draw", "picture") -> Output high-fidelity **SVG (Static)**.
-              2. If user asks for a **"Flowchart/Diagram"** -> Use **Mermaid**.
-              3. If user asks to **"Animate"**, **"Explain the flow"**, or describes **dynamics** (e.g., "how it moves") -> Output an **Animated SVG**. 
+              1. "Draw/Picture/Image" -> Static production SVG.
+              2. "Flowchart/Diagram" -> Mermaid.
+              3. "Animate/Flow/Dynamics" -> Elite 2.0 Animated SVG.
+
+            - **TECHNICAL QUALITY CHECK (PRE-RESPONSE)**:
+              Before outputting an SVG, briefly state (in a hidden thought or pre-response text): 
+              "Applying Elite SVG 2.0 System: [✓] Smooth SMIL Splines [✓] Precise Bead Math [✓] Premium Defs Applied."
 
 
          - **COMBINATIONS**: You can and SHOULD combine elements.
