@@ -6,6 +6,7 @@ import { consumeToolBudgetUsage, getToolBudgetUsage, type CacheAudience } from "
 import { getAnonymousActorId } from "@/lib/actor-id";
 import { getInvalidSessionApiError, getSessionAuthState, getSessionUserId } from "@/lib/session-guard";
 import type { StreamUpdate } from "@/lib/streaming-types";
+import { prisma } from "@/lib/db";
 
 function getErrorMessage(error: unknown, fallback: string): string {
     return error instanceof Error ? error.message : fallback;
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
         const actorId = userId ?? getAnonymousActorId(req.headers);
 
         const body = await req.json();
-        const { query, repoDetails, filePaths, fileShas, history, profileData, modelPreference } = body;
+        const { query, repoDetails, filePaths, fileShas, history, profileData, modelPreference, runId } = body;
 
         if (modelPreference === "thinking" && !userId) {
             return NextResponse.json(
@@ -65,12 +66,11 @@ export async function POST(req: NextRequest) {
 
         const anonId = getAnonymousActorId(req.headers);
         if (userId) {
-            await trackAuthenticatedQueryEvent(userId, anonId);
-        } else {
+            await trackAuthenticatedQueryEvent(userId);
             const userAgent = req.headers.get("user-agent") ?? "";
             const country = req.headers.get("x-vercel-ip-country") ?? "Unknown";
             const device = /mobile/i.test(userAgent) ? "mobile" : "desktop";
-            await trackEvent(anonId, "query", { country, device, userAgent });
+            await trackEvent(userId, "query", { country, device, userAgent });
         }
 
         let normalizedFileShas: Record<string, string> | undefined;
@@ -83,10 +83,33 @@ export async function POST(req: NextRequest) {
         const repo = typeof repoDetails?.repo === "string" ? repoDetails.repo : undefined;
         const queryPreview = typeof query === "string" ? query.slice(0, 160) : undefined;
 
+        const safeRunId = typeof runId === "string" && runId.trim() ? runId.trim() : null;
+        if (safeRunId) {
+            const canWrite = await prisma.chatRun.findFirst({
+                where: { id: safeRunId, actorId },
+                select: { id: true },
+            });
+            if (!canWrite) {
+                return NextResponse.json({ error: "Invalid runId" }, { status: 403 });
+            }
+        }
+
         const stream = new ReadableStream({
             async start(controller) {
+                const safeEnqueue = (payload: string) => {
+                    try {
+                        controller.enqueue(encoder.encode(payload));
+                    } catch {
+                        // If client disconnects, enqueue can throw. We still keep generating and persisting.
+                    }
+                };
+
                 try {
                     let toolUnitsConsumed = 0;
+                    let contentText = "";
+                    let lastPersistAt = 0;
+                    const persistEveryMs = 400;
+
                     const generator = generateAnswerStream(
                         query,
                         repoDetails,
@@ -103,9 +126,33 @@ export async function POST(req: NextRequest) {
                         if (chunk.type === "tool") {
                             toolUnitsConsumed += Math.max(1, chunk.usageUnits ?? 1);
                         }
+                        if (chunk.type === "content") {
+                            if (!contentText && chunk.text) {
+                                contentText = chunk.text.trimStart();
+                            } else {
+                                contentText += chunk.text;
+                            }
+                            if (safeRunId) {
+                                const now = Date.now();
+                                if (now - lastPersistAt >= persistEveryMs) {
+                                    lastPersistAt = now;
+                                    await prisma.chatRun.update({
+                                        where: { id: safeRunId },
+                                        data: { partialText: contentText, status: "RUNNING" },
+                                    });
+                                }
+                            }
+                        } else if (chunk.type === "complete") {
+                            if (safeRunId) {
+                                await prisma.chatRun.update({
+                                    where: { id: safeRunId },
+                                    data: { partialText: contentText, finalText: contentText, status: "COMPLETED" },
+                                });
+                            }
+                        }
                         // Serialize chunk to JSON and add newline for framing
                         const data = JSON.stringify(chunk) + "\n";
-                        controller.enqueue(encoder.encode(data));
+                        safeEnqueue(data);
                     }
                     if (toolUnitsConsumed > 0) {
                         await consumeToolBudgetUsage("repo", audience, actorId, toolUnitsConsumed);
@@ -118,12 +165,21 @@ export async function POST(req: NextRequest) {
                         queryPreview,
                         error,
                     });
+                    if (safeRunId) {
+                        await prisma.chatRun.update({
+                            where: { id: safeRunId },
+                            data: {
+                                status: "FAILED",
+                                errorMessage: getErrorMessage(error, "An error occurred during streaming."),
+                            },
+                        });
+                    }
                     const errorObj: StreamUpdate = {
                         type: "error",
                         message: getErrorMessage(error, "An error occurred during streaming."),
                         code: getErrorCode(error),
                     };
-                    controller.enqueue(encoder.encode(JSON.stringify(errorObj) + "\n"));
+                    safeEnqueue(JSON.stringify(errorObj) + "\n");
                     controller.close();
                 }
             }

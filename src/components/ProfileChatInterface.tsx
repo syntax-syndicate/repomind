@@ -42,6 +42,7 @@ const PROFILE_SUGGESTIONS = [
 ];
 
 type HttpError = Error & { status?: number; code?: string };
+type ChatRunStatus = "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
 
 function parseResponseError(rawResponseText: string, status: number): { message: string; code?: string } {
     if (!rawResponseText.trim()) {
@@ -123,7 +124,9 @@ export function ProfileChatInterface({
     const [crossRepoEnabled, setCrossRepoEnabled] = useState(false);
     const [showLoginModal, setShowLoginModal] = useState(false);
     const [loginModalCopy, setLoginModalCopy] = useState<{ title?: string; description?: string }>({});
+    const [connectionLost, setConnectionLost] = useState(false);
     const isSubmittingRef = useRef(false);
+    const activeRunKey = useMemo(() => `repomind:chatRun:profile:${profile.login}`, [profile.login]);
 
     useEffect(() => {
         if (!session && crossRepoEnabled) {
@@ -145,6 +148,67 @@ export function ProfileChatInterface({
                 }
             }
             setInitialized(true);
+
+            const storedRunId = typeof window !== "undefined" ? window.sessionStorage.getItem(activeRunKey) : null;
+            if (storedRunId) {
+                try {
+                    const runRes = await fetch(`/api/chat/run?runId=${encodeURIComponent(storedRunId)}`);
+                    if (runRes.ok) {
+                        const run = await runRes.json() as {
+                            runId: string;
+                            status: ChatRunStatus;
+                            partialText?: string;
+                            finalText?: string | null;
+                            errorMessage?: string | null;
+                        };
+                        const text = (run.finalText ?? run.partialText ?? "").toString();
+                        if (text) {
+                            const resumeMsgId = `run-${run.runId}`;
+                            setMessages((prev) => {
+                                const has = prev.some((m) => m.id === resumeMsgId);
+                                if (has) {
+                                    return prev.map((m) => (m.id === resumeMsgId ? { ...m, role: "model", content: text } : m));
+                                }
+                                return [...prev, { id: resumeMsgId, role: "model", content: text }];
+                            });
+                            setShowSuggestions(false);
+                        }
+
+                        if (run.status === "RUNNING") {
+                            setLoading(true);
+                            setConnectionLost(true);
+                            const resumeMsgId = `run-${run.runId}`;
+                            const poll = async () => {
+                                try {
+                                    const r = await fetch(`/api/chat/run?runId=${encodeURIComponent(storedRunId)}`);
+                                    if (!r.ok) return;
+                                    const next = await r.json() as { status: ChatRunStatus; partialText?: string; finalText?: string | null; errorMessage?: string | null };
+                                    const nextText = (next.finalText ?? next.partialText ?? "").toString();
+                                    setMessages((prev) => prev.map((m) => (m.id === resumeMsgId ? { ...m, content: nextText } : m)));
+                                    if (next.status === "COMPLETED") {
+                                        setLoading(false);
+                                        setConnectionLost(false);
+                                        window.sessionStorage.removeItem(activeRunKey);
+                                    } else if (next.status === "FAILED") {
+                                        setLoading(false);
+                                        setConnectionLost(false);
+                                        window.sessionStorage.removeItem(activeRunKey);
+                                    } else {
+                                        setTimeout(poll, 1000);
+                                    }
+                                } catch {
+                                    setTimeout(poll, 1500);
+                                }
+                            };
+                            setTimeout(poll, 600);
+                        } else if (run.status === "COMPLETED" || run.status === "FAILED") {
+                            window.sessionStorage.removeItem(activeRunKey);
+                        }
+                    }
+                } catch {
+                    // Ignore resume failures.
+                }
+            }
         };
         fetchConversation();
     }, [profile.login, session]);
@@ -202,6 +266,27 @@ export function ProfileChatInterface({
     const runProfileStreamingFlow = async (modelMsgId: string, combinedInput: string) => {
         const isThinkingStream = modelPreference === "thinking";
         const historyForServer = messages.slice(-8).map((message) => ({ role: message.role, content: message.content }));
+        setConnectionLost(false);
+
+        const clientRequestId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+        const runCreateRes = await fetch("/api/chat/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                scope: "profile",
+                username: profile.login,
+                clientRequestId,
+            }),
+        });
+        let runId: string | null = null;
+        if (runCreateRes.ok) {
+            const run = await runCreateRes.json() as { runId?: string };
+            runId = typeof run.runId === "string" ? run.runId : null;
+        }
+        if (runId) {
+            window.sessionStorage.setItem(activeRunKey, runId);
+        }
+
         const response = await fetch("/api/chat/profile", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -218,6 +303,7 @@ export function ProfileChatInterface({
                 history: historyForServer,
                 modelPreference,
                 crossRepoEnabled,
+                runId,
             }),
         });
 
@@ -348,6 +434,10 @@ export function ProfileChatInterface({
                 ? { ...message, content: contentText, streamStatus: "Completed", streamProgress: 100 }
                 : message
         ));
+
+        if (runId) {
+            window.sessionStorage.removeItem(activeRunKey);
+        }
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -456,6 +546,9 @@ export function ProfileChatInterface({
         } finally {
             setLoading(false);
             isSubmittingRef.current = false;
+            if (typeof window !== "undefined") {
+                window.sessionStorage.removeItem(activeRunKey);
+            }
         }
     };
 
@@ -576,6 +669,13 @@ export function ProfileChatInterface({
                 onMouseUp={handleSelection}
                 className="flex-1 overflow-y-auto p-4 space-y-6 relative selection:bg-blue-500/50 selection:text-white [&_*::selection]:bg-blue-500/50 [&_*::selection]:text-white"
             >
+                {connectionLost && (
+                    <div className="max-w-3xl mx-auto">
+                        <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                            Connection lost. We&apos;ll keep saving the response and reconnect when possible.
+                        </div>
+                    </div>
+                )}
                 {selectionAnchor && (
                     <button
                         onClick={handleAskFromSelection}

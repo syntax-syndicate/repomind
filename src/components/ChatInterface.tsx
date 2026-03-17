@@ -61,6 +61,7 @@ interface ChatInterfaceProps {
 
 type SubmitMode = "normal" | "quick_scan" | "deep_scan";
 type HttpError = Error & { status?: number; code?: string };
+type ChatRunStatus = "RUNNING" | "COMPLETED" | "FAILED" | "CANCELLED";
 
 // Keep this in sync with server-side pruneFilePaths to avoid sending noisy/binary paths in request payloads.
 const REQUEST_FILE_PATH_SKIP_PATTERN =
@@ -138,6 +139,7 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
     const [showClearConfirm, setShowClearConfirm] = useState(false);
     const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
     const [modelPreference, setModelPreference] = useState<ModelPreference>("flash");
+    const [connectionLost, setConnectionLost] = useState(false);
 
     const [ownerProfile, setOwnerProfile] = useState<OwnerProfile | null>(null);
     const [showBadgeModal, setShowBadgeModal] = useState(false);
@@ -146,6 +148,7 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
     const [loginModalCopy, setLoginModalCopy] = useState<{ title?: string; description?: string }>({});
     const [deepScansData, setDeepScansData] = useState<{ used: number; total: number; resetsAt: string; isUnlimited: boolean } | null>(null);
     const [latestScanId, setLatestScanId] = useState<string | null>(null);
+    const activeRunKey = useMemo(() => `repomind:chatRun:repo:${repoContext.owner}:${repoContext.repo}`, [repoContext.owner, repoContext.repo]);
 
     const handleSubmitRef = useRef<((e?: React.FormEvent, overrideText?: string, submitMode?: SubmitMode, scanAiAssist?: boolean) => Promise<void>) | null>(null);
     const isSubmittingRef = useRef(false);
@@ -191,6 +194,66 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                 }
             }
             setInitialized(true);
+
+            const storedRunId = typeof window !== "undefined" ? window.sessionStorage.getItem(activeRunKey) : null;
+            if (storedRunId) {
+                try {
+                    const runRes = await fetch(`/api/chat/run?runId=${encodeURIComponent(storedRunId)}`);
+                    if (runRes.ok) {
+                        const run = await runRes.json() as {
+                            runId: string;
+                            status: ChatRunStatus;
+                            partialText?: string;
+                            finalText?: string | null;
+                            errorMessage?: string | null;
+                        };
+                        const text = (run.finalText ?? run.partialText ?? "").toString();
+                        if (text) {
+                            const resumeMsgId = `run-${run.runId}`;
+                            setMessages((prev) => {
+                                const has = prev.some((m) => m.id === resumeMsgId);
+                                if (has) {
+                                    return prev.map((m) => (m.id === resumeMsgId ? { ...m, role: "model", content: text } : m));
+                                }
+                                return [...prev, { id: resumeMsgId, role: "model", content: text }];
+                            });
+                            setShowSuggestions(false);
+                        }
+
+                        if (run.status === "RUNNING") {
+                            setLoading(true);
+                            setConnectionLost(true);
+                            const poll = async () => {
+                                try {
+                                    const r = await fetch(`/api/chat/run?runId=${encodeURIComponent(storedRunId)}`);
+                                    if (!r.ok) return;
+                                    const next = await r.json() as { status: ChatRunStatus; partialText?: string; finalText?: string | null; errorMessage?: string | null };
+                                    const nextText = (next.finalText ?? next.partialText ?? "").toString();
+                                    setMessages((prev) => prev.map((m) => (m.id === resumeMsgId ? { ...m, content: nextText } : m)));
+                                    if (next.status === "COMPLETED") {
+                                        setLoading(false);
+                                        setConnectionLost(false);
+                                        window.sessionStorage.removeItem(activeRunKey);
+                                    } else if (next.status === "FAILED") {
+                                        setLoading(false);
+                                        setConnectionLost(false);
+                                        window.sessionStorage.removeItem(activeRunKey);
+                                    } else {
+                                        setTimeout(poll, 1000);
+                                    }
+                                } catch {
+                                    setTimeout(poll, 1500);
+                                }
+                            };
+                            setTimeout(poll, 600);
+                        } else if (run.status === "COMPLETED" || run.status === "FAILED") {
+                            window.sessionStorage.removeItem(activeRunKey);
+                        }
+                    }
+                } catch {
+                    // Ignore resume failures.
+                }
+            }
 
             if (initialPrompt && !initialPromptHandled.current) {
                 initialPromptHandled.current = true;
@@ -382,6 +445,28 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                 .map((file) => [file.path, file.sha as string])
         );
         const historyForServer = messages.slice(-8).map((message) => ({ role: message.role, content: message.content }));
+        setConnectionLost(false);
+
+        const clientRequestId = typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`;
+        const runCreateRes = await fetch("/api/chat/run", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                scope: "repo",
+                owner: repoContext.owner,
+                repo: repoContext.repo,
+                clientRequestId,
+            }),
+        });
+        let runId: string | null = null;
+        if (runCreateRes.ok) {
+            const run = await runCreateRes.json() as { runId?: string };
+            runId = typeof run.runId === "string" ? run.runId : null;
+        }
+        if (runId) {
+            window.sessionStorage.setItem(activeRunKey, runId);
+        }
+
         const response = await fetch("/api/chat/repo", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -393,6 +478,7 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                 history: historyForServer,
                 profileData: ownerProfile,
                 modelPreference: selectedModelPreference,
+                runId,
             }),
         });
 
@@ -531,6 +617,10 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                 ? { ...m, content: contentText, streamStatus: "Completed", streamProgress: 100 }
                 : m
         ));
+
+        if (runId) {
+            window.sessionStorage.removeItem(activeRunKey);
+        }
     };
 
     const handleSubmit = async (
@@ -663,6 +753,9 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
         } finally {
             setLoading(false);
             isSubmittingRef.current = false;
+            if (typeof window !== "undefined") {
+                window.sessionStorage.removeItem(activeRunKey);
+            }
         }
     };
 
@@ -834,6 +927,13 @@ export function ChatInterface({ repoContext, onToggleSidebar, initialPrompt }: C
                 onMouseUp={handleSelection}
                 className="flex-1 overflow-y-auto p-4 space-y-6 relative selection:bg-blue-500/50 selection:text-white [&_*::selection]:bg-blue-500/50 [&_*::selection]:text-white"
             >
+                {connectionLost && (
+                    <div className="max-w-4xl mx-auto">
+                        <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-3 py-2">
+                            Connection lost. We&apos;ll keep saving the response and reconnect when possible.
+                        </div>
+                    </div>
+                )}
                 {selectionAnchor && (
                     <button
                         onClick={handleAskFromSelection}

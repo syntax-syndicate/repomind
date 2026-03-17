@@ -21,6 +21,7 @@ model User {
   queryCount                   Int                          @default(0)
   accounts                     Account[]
   conversations                ChatConversation[]
+  chatRuns                     ChatRun[]
   requestedFixVerificationRuns FixVerificationRun[]         @relation("UserRequestedFixVerificationRuns")
   recentSearches               RecentSearch[]
   repoScans                    RepoScan[]
@@ -221,6 +222,37 @@ model ChatConversation {
 
   @@unique([userId, conversationKey])
   @@index([userId, updatedAt(sort: Desc)])
+}
+
+model ChatRun {
+  id              String        @id @default(cuid())
+  actorId          String
+  userId          String?
+  conversationKey String
+  scope           String
+  owner           String?
+  repo            String?
+  username        String?
+  clientRequestId String
+  status          ChatRunStatus @default(RUNNING)
+  partialText     String        @default("")
+  finalText       String?
+  errorMessage    String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  user            User?         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([actorId, conversationKey, clientRequestId])
+  @@index([actorId, updatedAt(sort: Desc)])
+  @@index([conversationKey, updatedAt(sort: Desc)])
+}
+
+enum ChatRunStatus {
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
 }
 
 model TransactionalEmailDelivery {
