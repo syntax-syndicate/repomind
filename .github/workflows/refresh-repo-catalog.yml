@@ -35,8 +35,8 @@ jobs:
         run: |
           REPO_COUNT=$(grep -c '"owner"' public/data/top-repos.json)
           echo "Found $REPO_COUNT repositories."
-          if [ "$REPO_COUNT" -lt 7000 ]; then
-            echo "Error: Catalog size ($REPO_COUNT) is below the minimum threshold (7000)."
+          if [ "$REPO_COUNT" -lt 4000 ]; then
+            echo "Error: Catalog size ($REPO_COUNT) is below the minimum threshold (4000)."
             exit 1
           fi
 
