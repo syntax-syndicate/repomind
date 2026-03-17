@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { Metadata } from 'next';
 import HomeClient from './HomeClient';
 import { getHomepagePosts } from '@/lib/services/blog-service';
+import { getCuratedRepos } from '@/lib/repo-catalog';
 
 export const metadata: Metadata = {
   title: "AI Code Analyzer & Security Scanner for GitHub Repos | RepoMind",
@@ -21,11 +22,14 @@ export const metadata: Metadata = {
 };
 
 export default async function Home() {
-  const latestPosts = await getHomepagePosts();
+  const [latestPosts, trendingRepos] = await Promise.all([
+    getHomepagePosts(),
+    getCuratedRepos('weekly'),
+  ]);
 
   return (
     <Suspense fallback={null}>
-      <HomeClient initialPosts={latestPosts} />
+      <HomeClient initialPosts={latestPosts} trendingRepos={trendingRepos} />
     </Suspense>
   );
 }

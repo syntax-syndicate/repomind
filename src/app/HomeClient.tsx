@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useSession } from "next-auth/react";
 import { motion } from "framer-motion";
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight, Loader2, Star, GitFork, MessageSquare, Globe } from "lucide-react";
 import { fetchGitHubData, getRecentSearches } from "./actions";
 import TrustedByMarquee from "@/components/TrustedByMarquee";
 import InteractiveDemo from "@/components/InteractiveDemo";
@@ -24,8 +24,15 @@ import Footer from "@/components/Footer";
 import type { SearchHistoryItem } from "@/lib/services/history-service";
 import { INVALID_SESSION_ERROR_PARAM } from "@/lib/session-guard";
 import { BlogPost } from "@prisma/client";
+import { CatalogRepoEntry } from "@/lib/repo-catalog";
 
-export default function HomeClient({ initialPosts = [] }: { initialPosts?: BlogPost[] }) {
+export default function HomeClient({ 
+    initialPosts = [], 
+    trendingRepos = [] 
+}: { 
+    initialPosts?: BlogPost[], 
+    trendingRepos?: CatalogRepoEntry[] 
+}) {
     const [input, setInput] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
@@ -33,7 +40,11 @@ export default function HomeClient({ initialPosts = [] }: { initialPosts?: BlogP
     const searchParams = useSearchParams();
     const { data: session } = useSession();
     const [recentSearches, setRecentSearches] = useState<SearchHistoryItem[]>([]);
+    const [visibleReposCount, setVisibleReposCount] = useState(50);
     const hasInvalidSessionError = searchParams.get("error") === INVALID_SESSION_ERROR_PARAM;
+
+    const visibleRepos = trendingRepos.slice(0, visibleReposCount);
+    const hasMoreRepos = visibleReposCount < trendingRepos.length;
 
     useEffect(() => {
         if (session) {
@@ -196,8 +207,88 @@ export default function HomeClient({ initialPosts = [] }: { initialPosts?: BlogP
                 <WallOfLove />
             </div>
 
-            {initialPosts.length > 0 && (
+            {trendingRepos.length > 0 && (
                 <section className="relative z-10 w-full bg-black py-24 px-6 border-t border-white/5">
+                    <div className="max-w-7xl mx-auto">
+                        <div className="mb-12">
+                            <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4 text-white">
+                                Trending <span className="bg-gradient-to-r from-blue-400 to-purple-500 bg-clip-text text-transparent">Repositories</span>
+                            </h2>
+                            <p className="text-zinc-400 text-lg max-w-2xl">
+                                Explore the projects getting the most heat on GitHub this week. Instantly analyze any of them with RepoMind.
+                            </p>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                            {visibleRepos.map((repo) => (
+                                <div 
+                                    key={`${repo.owner}/${repo.repo}`}
+                                    className="bg-zinc-900/40 border border-white/5 rounded-2xl p-6 hover:bg-zinc-900/60 transition-all group flex flex-col justify-between"
+                                >
+                                    <div>
+                                        <div className="flex items-center justify-between mb-4">
+                                            <div className="flex items-center gap-2 text-zinc-300 font-medium">
+                                                <Image 
+                                                    src={`https://github.com/${repo.owner}.png`}
+                                                    alt={repo.owner}
+                                                    width={20}
+                                                    height={20}
+                                                    className="rounded-full bg-white/10"
+                                                />
+                                                <span className="truncate max-w-[150px]">{repo.owner}</span>
+                                            </div>
+                                            <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/5 text-[10px] font-bold text-zinc-500 uppercase">
+                                                <Globe size={10} /> {repo.language || 'Code'}
+                                            </div>
+                                        </div>
+                                        <h3 className="text-xl font-bold text-white mb-2 group-hover:text-blue-400 transition-colors">
+                                            {repo.repo}
+                                        </h3>
+                                        <p className="text-zinc-500 text-sm line-clamp-2 mb-6 min-h-[40px]">
+                                            {repo.description || 'Experience high-context AI analysis for this repository.'}
+                                        </p>
+                                    </div>
+
+                                    <div className="flex items-center justify-between mt-auto">
+                                        <div className="flex items-center gap-4 text-xs text-zinc-500">
+                                            <span className="flex items-center gap-1">
+                                                <Star size={12} className="text-yellow-500" />
+                                                {repo.stars.toLocaleString()}
+                                            </span>
+                                            <span className="flex items-center gap-1">
+                                                <GitFork size={12} className="text-zinc-600" />
+                                                Trending
+                                            </span>
+                                        </div>
+                                        <Link 
+                                            href={`/chat?q=${repo.owner}/${repo.repo}`}
+                                            className="inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg bg-white text-black text-xs font-bold hover:bg-zinc-200 transition-colors"
+                                        >
+                                            <MessageSquare size={12} />
+                                            Talk to Repo
+                                        </Link>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {hasMoreRepos && (
+                            <div className="mt-12 text-center">
+                                <button 
+                                    onClick={() => setVisibleReposCount(prev => prev + 50)}
+                                    className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl bg-zinc-900 border border-white/10 text-white font-bold hover:bg-zinc-800 transition-colors group"
+                                >
+                                    Explore more repositories
+                                    <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                </section>
+            )}
+
+            {initialPosts.length > 0 && (
+                <section className="relative z-10 w-full bg-zinc-950 py-24 px-6 border-t border-white/5">
                     <div className="max-w-7xl mx-auto">
                         <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-6">
                             <div>

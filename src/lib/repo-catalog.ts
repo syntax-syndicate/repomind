@@ -2,10 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { unstable_cache } from "next/cache";
 
-const REPO_LIMIT = 250;
-const TOPIC_INDEX_LIMIT = 1000;
-const TOPIC_MIN_REPO_COUNT = 5;
+const REPO_LIMIT = 7600;
+const TOPIC_INDEX_LIMIT = 2000;
+const TOPIC_MIN_REPO_COUNT = 20;
 const TOPIC_REPO_LIST_LIMIT = 50;
+
+export type RepoTier = 'all-time' | 'yearly' | '6-month' | 'monthly' | 'weekly';
 
 export interface CatalogRepoEntry {
   owner: string;
@@ -14,6 +16,8 @@ export interface CatalogRepoEntry {
   description: string | null;
   topics: string[];
   language: string | null;
+  tier?: RepoTier;
+  rank?: number;
 }
 
 interface CatalogData {
@@ -44,6 +48,8 @@ function normalizeRepo(entry: CatalogRepoEntry): CatalogRepoEntry {
       .filter((topic): topic is string => typeof topic === "string" && topic.trim().length > 0)
       .map((topic) => topic.toLowerCase()),
     language: entry.language,
+    tier: entry.tier,
+    rank: entry.rank,
   };
 }
 
@@ -70,23 +76,44 @@ function buildCatalogData(repos: CatalogRepoEntry[]): CatalogData {
   const curatedRepoKeys = curatedRepos.map((repo) => toRepoKey(repo.owner, repo.repo));
 
   const topicBuckets: Record<string, CatalogRepoEntry[]> = {};
+  const topicFrequency: Record<string, { allTime: number; trending: number }> = {};
 
   for (const repo of curatedRepos) {
     const uniqueTopics = new Set(repo.topics);
+    const isTrending = repo.tier === 'weekly' || repo.tier === 'monthly' || repo.tier === '6-month';
+
     for (const topic of uniqueTopics) {
       if (!topicBuckets[topic]) {
         topicBuckets[topic] = [];
+        topicFrequency[topic] = { allTime: 0, trending: 0 };
       }
       topicBuckets[topic].push(repo);
+      
+      if (repo.tier === 'all-time') {
+        topicFrequency[topic].allTime++;
+      }
+      if (isTrending) {
+        topicFrequency[topic].trending++;
+      }
     }
   }
 
-  const topicCounts = Object.entries(topicBuckets)
-    .map(([topic, reposForTopic]) => ({ topic, count: reposForTopic.length }))
-    .filter((entry) => entry.count >= TOPIC_MIN_REPO_COUNT)
-    .sort((a, b) => (b.count === a.count ? a.topic.localeCompare(b.topic) : b.count - a.count));
+  // Topic Strategy: 1500 Trending + 500 Stable
+  const eligibleTopics = Object.entries(topicBuckets)
+    .filter(([_, reposForTopic]) => reposForTopic.length >= TOPIC_MIN_REPO_COUNT)
+    .map(([topic]) => topic);
 
-  const indexableTopics = topicCounts.slice(0, TOPIC_INDEX_LIMIT).map((entry) => entry.topic);
+  const stableTopics = [...eligibleTopics]
+    .sort((a, b) => topicFrequency[b].allTime - topicFrequency[a].allTime)
+    .slice(0, 500);
+
+  const remainingTopics = eligibleTopics.filter(t => !stableTopics.includes(t));
+  
+  const trendingTopics = remainingTopics
+    .sort((a, b) => topicFrequency[b].trending - topicFrequency[a].trending)
+    .slice(0, 1500);
+
+  const indexableTopics = [...stableTopics, ...trendingTopics].sort();
 
   return {
     curatedRepos,
@@ -120,8 +147,11 @@ const getCatalogData = unstable_cache(
   }
 );
 
-export async function getCuratedRepos(): Promise<CatalogRepoEntry[]> {
+export async function getCuratedRepos(tier?: RepoTier): Promise<CatalogRepoEntry[]> {
   const data = await getCatalogData();
+  if (tier) {
+    return data.curatedRepos.filter(repo => repo.tier === tier);
+  }
   return data.curatedRepos;
 }
 
