@@ -102,7 +102,7 @@ function buildCatalogData(repos: CatalogRepoEntry[]): CatalogData {
 
   // Topic Strategy: 1500 Trending + 500 Stable
   const eligibleTopics = Object.entries(topicBuckets)
-    .filter(([_, reposForTopic]) => reposForTopic.length >= TOPIC_MIN_REPO_COUNT)
+    .filter(([, reposForTopic]) => reposForTopic.length >= TOPIC_MIN_REPO_COUNT)
     .map(([topic]) => topic);
 
   const stableTopics = [...eligibleTopics]
